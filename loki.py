@@ -19,20 +19,31 @@ plt.ion()
 
 # gui = 'console'
 gui = 'headless'
-gui = 'pygame'
+# gui = 'pygame'
 
 max_energy = 1
 efficiency = 0.6
 energy_drain = 1.0  # 0.99
 
+plot_data = True
+save_data = True
 save_video_frames = True
+save_history_images = True
 testing = True
 # testing = False
 
 fast = False
 
+if fast:
+    plot_data = False
+    save_video_frames = False
+    save_data = False
+
+if gui == 'headless':
+    plot_data = False
+
 if testing:
-    land_size = 32
+    land_size = 320
     history = 240
 else:
     #land_size = 1680
@@ -47,7 +58,7 @@ resources = np.zeros(num_resources)
 resources[0] = 0.
 resources[1] = 0.
 
-resource_mutability = np.random.uniform(size=resources.shape) * 0.002
+resource_mutability = np.ones(resources.shape) * 0.002
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
 # pygame.display.toggle_fullscreen()
@@ -69,7 +80,7 @@ class Agent(object):
         self._colour = np.random.uniform(size=(3,))
         # self._mutation_level_means = 0.1
         # self._mutation_level_sigmas = 0.1
-        self._mutation_level_repro = 0.1
+        self._mutation_level_repro = np.random.uniform()
 
         # Params
         self._energy = 0
@@ -133,8 +144,10 @@ class Agent(object):
                 lower=0.0)
         mutate_array(self._colour, self._mutation_level_colour, 
                 lower=0.0, higher=1.0, reflect=True)
-        mutate_array(self._mutability_means, 0.01, lower=0.0)
-        mutate_array(self._mutability_sigmas, 0.01, lower=0.0)
+        mutate_array(self._mutability_means, 0.01, lower=0.0, higher=1.0, 
+                reflect=True)
+        mutate_array(self._mutability_sigmas, 0.01, lower=0.0, higher=1.0, 
+                reflect=True)
 
         # self._mutation_level_means = mutate_value(
         #         self._mutation_level_means, 0.01, lower=0.0)
@@ -175,20 +188,21 @@ def mutate_array(arr, level, lower=None, higher=None, reflect=False):
     arr += (np.random.normal(size=arr.shape) * level)
     if lower is not None:
       if reflect:
-          arr[arr < lower] = -arr[arr < lower]
+          arr[arr < lower] = 2 * lower - arr[arr < lower]
       else:
         arr[arr < lower] = lower
     if higher is not None:
       if reflect:
           arr[arr > higher] = 2 * higher - arr[arr > higher]
-      arr[arr > higher] = higher
+      else:
+        arr[arr > higher] = higher
     return arr
 
 def mutate_value(val, level, lower=None, higher=None):
     val += np.random.normal() * level
-    if lower is not None:
+    if lower is not None and val < lower:
       val = lower
-    if higher is not None:
+    if higher is not None and val > higher:
       val = higher
     return val
 
@@ -265,18 +279,22 @@ def draw_agents_roll(bitmap, world, agents):
 
 def get_data(agents):
     means = []
+    mut_means = []
     sigmas = []
+    mut_sigmas = []
     reproduction_threshold = []
     energy = []
     for agent in agents:
         if agent is not None:
             means.append(agent._means)
+            mut_means.append(agent._mutability_means)
             sigmas.append(agent._sigmas)
+            mut_sigmas.append(agent._mutability_sigmas)
             reproduction_threshold.append(agent._reproduction_threshold)
             energy.append(agent._energy)
     return dict(means=means, sigmas=sigmas, 
             reproduction_threshold=reproduction_threshold,
-            energy=energy)
+            energy=energy, mut_means=mut_means, mut_sigmas=mut_sigmas)
 
 def stats(vals):
     vals = np.array(vals)
@@ -285,7 +303,10 @@ def stats(vals):
 stop = False
 #for t in range(1000):
 energy_hist = []
+max_energy_hist = []
 repo_hist = []
+mut_means_hist = []
+mut_sigmas_hist = []
 t = 0
 current_res = np.zeros_like(resources)
 
@@ -298,19 +319,23 @@ while True:
     changed = False
     if np.random.uniform() < resource_mutability[0]:
         resources[0] += np.random.uniform(-1,1) * 5
+        # resources[0] += np.random.normal() * 5
         # resources[0] += np.random.standard_cauchy() * 5
         changed = True
     if np.random.uniform() < resource_mutability[1]:
         resources[1] += np.random.uniform(-1,1) * 5
+        # resources[1] += np.random.normal() * 5
         # resources[1] += np.random.standard_cauchy() * 5
         changed = True
+    current_res[0] = resources[0]
+    current_res[1] = resources[1]
     if changed:
-        print('Resources at {} = {}'.format(t, current_res))
+        print('Resources at {} = {} (mutabilitt {})'.format(
+            t, current_res, resource_mutability))
     #current_res[0] = (np.sin((t*two_pi)/300.) + 1.) / 2 + resources[0]
     #current_res[1] = (np.cos((t*two_pi)/500.) + 1.) / 2 + resources[1]
 
-    current_res[0] = resources[0]
-    current_res[1] = resources[1]
+
 
     # resources[2] = (np.cos((t*two_pi)/800.) + 1.)
     # resources[3] = (np.cos((t*two_pi)/1300.) + 1.)
@@ -327,6 +352,7 @@ while True:
                     break
     if stop:
         break
+    max_energy *= 0.99
     step_world(world, current_res, agents)
     if not fast:
         bitmap = draw_agents_roll(bitmap, world, agents)
@@ -336,57 +362,90 @@ while True:
        show(world, agents)
     elif gui == 'pygame':
         # pygame.transform.scale(final_surf, (width*scale, height*scale), DISPLAYSURF)
-        bbitmap = scipy.misc.imresize(bitmap, (display_w, display_h),
-                interp='nearest')
+        if not fast:
+            bbitmap = scipy.misc.imresize(bitmap, (display_w, display_h),
+                    interp='nearest')
+        else:
+            bbitmap = bitmap
         surfarray.blit_array(display, bbitmap)
         pygame.display.flip()
 
-    if save_video_frames and t % int(history/8) == 0 and not fast:
+    if save_video_frames and t % int(history/8) == 0:
         img = Image.fromarray(bitmap.swapaxes(0,1))
         img = img.resize((img.width * 2, img.height * 2))
         img.save('output/loki_frame_t{:09d}.png'.format(t))
 
-    if t % history == history - 1 and not fast:
+    if t % history == history - 1:
 
-        img = Image.fromarray(bitmap.swapaxes(0,1))
-        img = img.resize((img.width * 2, img.height * 2))
-        img.save('output/loki_image_t{:09d}.png'.format(t))
+        if save_history_images:
+            img = Image.fromarray(bitmap.swapaxes(0,1))
+            img = img.resize((img.width * 2, img.height * 2))
+            img.save('output/loki_image_t{:09d}.png'.format(t))
 
-        data = get_data(agents)
-        energy_hist.append(stats(data['energy']))
-        repo_hist.append(stats(data['reproduction_threshold']))
-        # print('{}={:.1f}, {:.1f}, {:.1f}'.format(
-        #     'energy', *energy_hist[-1]))
-        # print('{}={:.1f}, {:.1f}, {:.1f}'.format(
-        #     'reproduction_threshold', *repo_hist[-1]))
-        data['energy_hist'] = energy_hist
-        data['repo_hist'] = repo_hist
-        with open('output/loki_data_t{:09d}.pkl'.format(t), 'wb') as handle:
-            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if plot_data or save_data:
+            data = get_data(agents)
 
-        ax = plt.subplot(2,2,1)
-        ax.plot(energy_hist)
-        ax.set_title('energy')
-        ax = plt.subplot(2,2,2)
-        ax.plot(repo_hist)
-        ax.set_title('repro threshold')
-        ax = plt.subplot(2,2,3)
-        means = np.array(data['means'])
-        ax.scatter(means[:,0], means[:,1])
-        ax.scatter(current_res[0], current_res[1])
-        ax.set_title('means')
-        ax = plt.subplot(2,2,4)
-        sigmas = np.array(data['sigmas'])
-        ax.scatter(sigmas[:,0], sigmas[:,1])
-        ax.set_title('sigmas')
-        plt.tight_layout()
-        plt.draw()
-        plt.pause(0.0001)
-        plt.savefig('output/loki_plot_t{:09d}.png'.format(t)) 
-        plt.clf()
-            # plt.show()
-        #if testing:
-        #    break
+            agg = True
+            if agg:
+                energy_hist.append(stats(data['energy']))
+                repo_hist.append(stats(data['reproduction_threshold']))
+                mut_means_hist.append([stats(np.array(data['mut_means'])[:,0])[1],
+                        stats(np.array(data['mut_means'])[:,1])[1]])
+                mut_sigmas_hist.append(stats(data['mut_sigmas']))
+            else:
+                energy_hist.append(data['energy'])
+                repo_hist.append(data['reproduction_threshold'])
+                mut_means_hist.append(
+                    np.concatenate(
+                        (np.array(data['mut_means'])[:,0],
+                            np.array(data['mut_means'])[:,1])))
+                mut_sigmas_hist.append(np.concatenate(
+                    (np.array(data['mut_sigmas'])[:,0],
+                        np.array(data['mut_sigmas'])[:,1])))
+            max_energy_hist.append(max_energy)
+            data['energy_hist'] = energy_hist
+            data['max_energy_hist'] = max_energy_hist
+            data['repo_hist'] = repo_hist
+            data['mut_means_hist'] = mut_means_hist
+            data['mut_sigmas_hist'] = mut_sigmas_hist
+
+        if save_data:
+            with open(
+                    'output/loki_data_t{:09d}.pkl'.format(t), 'wb') as handle:
+                pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if plot_data:
+            ax = plt.subplot(3,2,1)
+            ax.plot(energy_hist)
+            ax.plot(max_energy_hist)
+            ax.set_title('energy')
+            ax = plt.subplot(3,2,2)
+            ax.plot(repo_hist)
+            ax.set_title('repro threshold')
+            ax = plt.subplot(3,2,3)
+            means = np.array(data['means'])
+            ax.scatter(means[:,0], means[:,1])
+            ax.scatter(current_res[0], current_res[1])
+            ax.set_title('means')
+            ax = plt.subplot(3,2,4)
+            sigmas = np.array(data['sigmas'])
+            ax.scatter(sigmas[:,0], sigmas[:,1])
+            ax.set_title('sigmas')
+            ax = plt.subplot(3,2,5)
+            means = np.array(data['mut_means_hist'])
+            ax.plot(means)
+            ax.set_title('mut means')
+            ax.set_ylim([0, 1])
+            ax = plt.subplot(3,2,6)
+            means = np.array(data['mut_sigmas_hist'])
+            ax.plot(means)
+            ax.set_title('mut sigmas')
+            ax.set_ylim([0, 1])
+            plt.tight_layout()
+            plt.draw()
+            plt.pause(0.0001)
+            plt.savefig('output/loki_plot_t{:09d}.png'.format(t)) 
+            plt.clf()
     t += 1
 
 
