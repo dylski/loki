@@ -18,10 +18,10 @@ plt.ion()
 
 
 # gui = 'console'
-gui = 'headless'
-# gui = 'pygame'
+# gui = 'headless'
+gui = 'pygame'
 
-max_energy = 1
+max_energy = 0
 efficiency = 0.6
 energy_drain = 1.0  # 0.99
 
@@ -170,11 +170,13 @@ class Agent(object):
 
     @property
     def rgb(self):
-        er = 0.9
-        self._colour[2] = ((self._energy * er)/max_energy) + (1-er)
+        # er = 0.9
+        # self._colour[2] = ((self._energy * er)/max_energy) + (1-er)
+        er = 1.0
+        self._colour[2] = self._colour[2] * er + (1-er)
         # self._colour[2] = 1-(((self._energy * er)/max_energy) + (1-er))
         sr = 1.0
-        self._colour[1] = self._colour[1]*sr + (1-sr)
+        self._colour[1] = self._colour[1] * sr + (1-sr)
         return np.array(colorsys.hsv_to_rgb(*self._colour.tolist()))
 
     def _rgb(self):
@@ -237,7 +239,7 @@ def step_world(world, incoming_resource, agents):
             else:
                 neighbour_indices = [pos - 1, pos + 1]
             agent.reproduce_stochastic(agents, neighbour_indices)
-            # if agent._energy > max_energy:
+            # if agent._energy < max_energy / 10:
             #     agents[pos] = None
             #     deaths += 1
             # print(agent._sigmas)
@@ -318,12 +320,14 @@ while True:
 
     changed = False
     if np.random.uniform() < resource_mutability[0]:
-        resources[0] += np.random.uniform(-1,1) * 5
+        resources[0] = np.random.uniform(-1,1) * 5
+        # resources[0] += np.random.uniform(-1,1) * 5
         # resources[0] += np.random.normal() * 5
         # resources[0] += np.random.standard_cauchy() * 5
         changed = True
     if np.random.uniform() < resource_mutability[1]:
-        resources[1] += np.random.uniform(-1,1) * 5
+        resources[1] = np.random.uniform(-1,1) * 5
+        # resources[1] += np.random.uniform(-1,1) * 5
         # resources[1] += np.random.normal() * 5
         # resources[1] += np.random.standard_cauchy() * 5
         changed = True
