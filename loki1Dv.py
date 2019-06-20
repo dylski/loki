@@ -2,8 +2,10 @@
 
 import colorsys
 from enum import IntEnum
+from functools import reduce
 from matplotlib import pyplot as plt
 import numpy as np
+import operator
 import pickle
 from PIL import Image
 import pygame
@@ -36,14 +38,17 @@ class State(IntEnum):
 
 config = dict(
         num_resources=2,
-        map_size=(64,48),
+        map_size=(320,),
+        # map_size=(64,48),
+        num_1d_history = 240,
         display_size=(640,480),
+        save_frames=False,
         # gui = 'console',
         # gui = 'headless',
         gui = 'pygame',
         )
-
-config['num_agents'] = config['map_size'][0] * config['map_size'][1]
+config['num_agents'] = reduce(operator.mul, config['map_size'])
+config['world_d'] = len(config['map_size'])
 
 
 def init_agents(config):
@@ -67,10 +72,43 @@ def init_agents(config):
             size=(state.shape[0],3))
     return agent_data
 
-def render_rgb(agent_data, map_size, display_size):
-    rgb_data = agent_data['state'][:,State.colour_start:State.colour_end]
-    rgb_data = rgb_data.reshape(map_size + (3,))
+
+def extract_energy(agent_data, resources):
+    # env is list of resources
+    # import pdb; pdb.set_trace()
+    dist_squared = np.square(agent_data['keys'][:,:,Key.mean] - resources)
+    sigmas = agent_data['keys'][:,:,Key.sigma]
+    agent_data['keys'][:,:,Key.energy] = (
+            (np.exp(-dist_squared / (2 * sigmas * sigmas)))
+            / (sigmas * sqrt_2_pi))
+    agent_data['state'][:,State.energy] += agent_data[
+            'keys'][:,:,Key.energy].sum(axis=1) * 0.01
+    # print(agent_data['keys'][0,:,Key.energy], 
+    #         agent_data['state'][0,State.energy])
+    # print(agent_data['keys'][1,:,Key.energy], 
+    #         agent_data['state'][1,State.energy])
+
+
+def render_rgb(agent_data, map_size):
+    rgb_data = agent_data['state'][:,State.colour_start:State.colour_end].copy()
+    max_energy = agent_data['state'][:,State.energy].max()
+    # max_energy = 6
+    norm_energy = agent_data['state'][:,State.energy] / (max_energy + 0.01)
+    factor = 0.0
+    #import pdb; pdb.set_trace()
+    rgb_data[:,:] = factor + ((1 - factor) 
+            * rgb_data[:,:] * norm_energy[:, np.newaxis])
+    # rgb_data[:,1] = factor + ((1 - factor) * rgb_data[:,1] * norm_energy)
+    # rgb_data[:,2] = factor + ((1 - factor) * rgb_data[:,2] * norm_energy)
+    # rgb_data[:,1] = rgb_data[:,1] * (agent_data['state'][:,State.energy] 
+    #         / (max_energy + 0.01))
+    # print(agent_data['state'][0,State.energy], 
+    #        agent_data['state'][0,State.energy] / (max_energy + 0.01),
+    #        rgb_data[0,:])
     rgb_data = (rgb_data * 255).astype(np.uint8).reshape(map_size + (3,))
+    return rgb_data
+
+def rgb_to_image(rgb_data, display_size):
     return Image.fromarray(rgb_data.swapaxes(0,1)).resize(display_size)
 
 def display_image(image, display):
@@ -87,9 +125,39 @@ if config['gui'] == 'pygame':
 agent_data = init_agents(config)
 print(agent_data['state'])
 
+if config['world_d'] == 1:
+    rgb_history = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
+            dtype=np.uint8)
+
+resources = np.random.uniform(-5, 5, size=config['num_resources'])
 t = 0
-image = render_rgb(agent_data, config['map_size'], config['display_size'])
-display_image(image, display)
-image.save('output/loki_frame_t{:09d}.png'.format(t))
+stop = False
+while True:
+    if config['gui'] == 'pygame':
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                stop = True
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    stop = True
+                    break
+    if stop:
+        break
+
+    rgb = render_rgb(agent_data, config['map_size'])
+    if config['world_d'] == 1:
+        rgb_history[:,t % config['num_1d_history']] = rgb
+        image = rgb_to_image(rgb_history, config['display_size']) 
+    else:
+        image = rgb_to_image(rgb, config['display_size']) 
+
+    if config['gui'] == 'pygame':
+        display_image(image, display)
+    if config['save_frames']:
+        image.save('output_v/loki_frame_t{:09d}.png'.format(t))
+    extract_energy(agent_data, resources)
+    # print(t)
+    t += 1
 
 print(agent_data['state'])

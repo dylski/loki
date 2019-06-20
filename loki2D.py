@@ -16,6 +16,8 @@ from scipy.stats import logistic
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
+# Energy colour, uniform5 delta on res, high res
+
 pygame.init()
 plt.ion()
 
@@ -114,7 +116,7 @@ class Agent(object):
         return self._colour * 255
 
     def rgb(self, max_energy):
-        colour_energy = True
+        colour_energy = False
         if colour_energy:
             er = 0.9
             self._colour[2] = ((self._energy * er)/max_energy) + (1-er)
@@ -362,14 +364,14 @@ def main():
 
         changed = False
         if np.random.uniform() < resource_mutability[0]:
-            resources[0] = np.random.uniform(-5,5)
-            # resources[0] += np.random.uniform(-1,1) * 5
+            # resources[0] = np.random.uniform(-5,5)
+            resources[0] += np.random.uniform(-1,1) * 5
             # resources[0] += np.random.normal() * 5
             # resources[0] += np.random.standard_cauchy() * 5
             changed = True
         if np.random.uniform() < resource_mutability[1]:
-            resources[1] = np.random.uniform(-5,5)
-            # resources[1] += np.random.uniform(-1,1) * 5
+            # resources[1] = np.random.uniform(-5,5)
+            resources[1] += np.random.uniform(-1,1) * 5
             # resources[1] += np.random.normal() * 5
             # resources[1] += np.random.standard_cauchy() * 5
             changed = True

@@ -39,6 +39,7 @@ if fast:
     save_video_frames = False
     save_data = False
 
+save_video_frames = False
 if gui == 'headless':
     plot_data = False
 
