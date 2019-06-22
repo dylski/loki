@@ -86,8 +86,28 @@ def extract_energy(agent_data, resources):
     # print(agent_data['keys'][0,:,Key.energy], 
     #         agent_data['state'][0,State.energy])
     # print(agent_data['keys'][1,:,Key.energy], 
-    #         agent_data['state'][1,State.energy])
+    #         agent_n_explorer_chromotedata['state'][1,State.energy])
 
+def agents_to_render_data(agent_data, render_data, row=0):
+    # Updata RGB matrix
+    new_render_data = agent_data['state'][
+            :,[State.red, State.green, State.blue, State.energy]]
+    if new_render_data.shape[0] == render_data.shape[0]:
+        # new_render_data is 1D, i.e. a row 
+        render_data[:, row] = new_render_data
+    else:
+        # new_render_data is 2D, i.e. data for the whole render_data map.
+        render_data[:] = new_render_data.reshape(render_data.shape)
+
+def render_data_to_bitmap(render_data, bitmap, method='flat_rgb'):
+    if method == 'flat_rgb':
+        # Just RGB
+        bitmap[:] = (render_data[:,:,0:3] * 255).astype(np.uint8)
+    elif method == 'energy_up':
+        bitmap[:] = (render_data[:,:,0:3] 
+                * (render_data[:,:,3] 
+                    / render_data[:,:,3].max())[:, :, np.newaxis]
+                * 255).astype(np.uint8)
 
 def render_rgb(agent_data, map_size):
     rgb_data = agent_data['state'][:,State.colour_start:State.colour_end].copy()
@@ -95,26 +115,25 @@ def render_rgb(agent_data, map_size):
     # max_energy = 6
     norm_energy = agent_data['state'][:,State.energy] / (max_energy + 0.01)
     factor = 0.0
-    #import pdb; pdb.set_trace()
     rgb_data[:,:] = factor + ((1 - factor) 
             * rgb_data[:,:] * norm_energy[:, np.newaxis])
-    # rgb_data[:,1] = factor + ((1 - factor) * rgb_data[:,1] * norm_energy)
-    # rgb_data[:,2] = factor + ((1 - factor) * rgb_data[:,2] * norm_energy)
-    # rgb_data[:,1] = rgb_data[:,1] * (agent_data['state'][:,State.energy] 
-    #         / (max_energy + 0.01))
-    # print(agent_data['state'][0,State.energy], 
-    #        agent_data['state'][0,State.energy] / (max_energy + 0.01),
-    #        rgb_data[0,:])
     rgb_data = (rgb_data * 255).astype(np.uint8).reshape(map_size + (3,))
     return rgb_data
 
+
+def bitmap_to_image(rgb_data, display_size):
+    return Image.fromarray(rgb_data.swapaxes(0,1)).resize(display_size)
+
+
 def rgb_to_image(rgb_data, display_size):
     return Image.fromarray(rgb_data.swapaxes(0,1)).resize(display_size)
+
 
 def display_image(image, display):
     bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
     surfarray.blit_array(display, bitmap)
     pygame.display.flip()
+
 
 pygame.init()
 plt.ion()
@@ -125,8 +144,17 @@ if config['gui'] == 'pygame':
 agent_data = init_agents(config)
 print(agent_data['state'])
 
+# if config['world_d'] == 1:
+#     rgb_history = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
+#             dtype=np.uint8)
+
 if config['world_d'] == 1:
-    rgb_history = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
+    render_data = np.zeros((config['map_size'][0], config['num_1d_history'], 4))
+    bitmap = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
+            dtype=np.uint8)
+else:
+    render_data = np.zeros((config['map_size'] + (4,)))
+    bitmap = np.zeros((config['map_size'] + (4,)),
             dtype=np.uint8)
 
 resources = np.random.uniform(-5, 5, size=config['num_resources'])
@@ -144,13 +172,21 @@ while True:
                     break
     if stop:
         break
-
-    rgb = render_rgb(agent_data, config['map_size'])
-    if config['world_d'] == 1:
-        rgb_history[:,t % config['num_1d_history']] = rgb
-        image = rgb_to_image(rgb_history, config['display_size']) 
+    
+    render_data = np.roll(render_data, 1, axis=1)
+    agents_to_render_data(agent_data, render_data)
+    if True:
+        render_data_to_bitmap(render_data, bitmap, method='energy_up')
     else:
-        image = rgb_to_image(rgb, config['display_size']) 
+        render_data_to_bitmap(render_data, bitmap, method='flat_rgb')
+    image = bitmap_to_image(bitmap, config['display_size']) 
+
+
+    # rgb = render_rgb(agent_data, config['map_size'])
+    # if config['world_d'] == 1:
+    #     rgb_history[:,t % config['num_1d_history']] = rgb
+    #     rgb = rgb_history
+    # image = rgb_to_image(rgb, config['display_size']) 
 
     if config['gui'] == 'pygame':
         display_image(image, display)
