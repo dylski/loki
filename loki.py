@@ -37,29 +37,37 @@ fast = False
 if fast:
     plot_data = False
     save_video_frames = False
+    save_history_images = False
     save_data = False
 
+# Like loki1Dv
+plot_data = False
+save_data = False
 save_video_frames = False
+save_history_images = False
+testing = True
+
+
 if gui == 'headless':
     plot_data = False
 
 if testing:
-    land_size = 320
-    history = 240
+    land_size = 320 * 2
+    history = 240 * 2
 else:
     #land_size = 1680
     #history = 1050
     land_size = 840
     history = 525
 
-display_w = land_size * 2
-display_h = history * 2
+display_w = land_size # * 2
+display_h = history # * 2
 num_resources = 2
 resources = np.zeros(num_resources)
 resources[0] = 0.
 resources[1] = 0.
 
-resource_mutability = np.ones(resources.shape) * 0.002
+resource_mutability = np.ones(resources.shape) * 0.00  # 2
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
 # pygame.display.toggle_fullscreen()
@@ -171,6 +179,11 @@ class Agent(object):
 
     @property
     def rgb(self):
+        # RGB modulated by energy
+        return self._colour[:] * (self._energy/max_energy)
+
+    @property
+    def irgb(self):
         # er = 0.9
         # self._colour[2] = ((self._energy * er)/max_energy) + (1-er)
         er = 1.0
@@ -452,5 +465,7 @@ while True:
             plt.savefig('output/loki_plot_t{:09d}.png'.format(t)) 
             plt.clf()
     t += 1
+    if t == 500:
+        break
 
 
