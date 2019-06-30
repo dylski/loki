@@ -3,6 +3,7 @@
 import colorsys
 from enum import IntEnum
 import functools
+import getopt
 from matplotlib import pyplot as plt
 import numpy as np
 import operator
@@ -12,6 +13,7 @@ import pygame
 from pygame import surfarray
 import random
 from scipy.stats import logistic
+import sys
 
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
@@ -38,28 +40,6 @@ class State(IntEnum):
     colour_mut = 7
     _num = 8
 
-
-config = dict(
-        num_resources=2,
-        # map_size=(640,),
-        map_size=(320,),
-        num_1d_history = 240,
-
-        # map_size=(64,48),
-        # map_size=(32,24),
-        display_size=(640,480),
-
-        # map_size=(1280,),
-        # num_1d_history = 720,
-        # display_size=(1280,720),
-
-        save_frames=False,
-        # gui = 'console',
-        # gui = 'headless',
-        gui = 'pygame',
-        )
-config['num_agents'] = functools.reduce(operator.mul, config['map_size'])
-config['world_d'] = len(config['map_size'])
 
 
 def init_agents(config):
@@ -92,7 +72,8 @@ def extract_energy(agent_data, resources):
             (np.exp(-dist_squared / (2 * sigmas * sigmas)))
             / (sigmas * sqrt_2_pi))
     agent_data['state'][:,State.energy] += agent_data[
-            'keys'][:,:,Key.energy].max(axis=1) #  * 0.1
+            'keys'][:,:,Key.energy].max(axis=1)  * 0.1
+    # print('Max energy', agent_data['state'][:,State.energy].max())
 
 
 def agents_to_render_data(agent_data, render_data, row=0):
@@ -107,15 +88,47 @@ def agents_to_render_data(agent_data, render_data, row=0):
         render_data[:] = new_render_data.reshape(render_data.shape)
 
 
-def render_data_to_bitmap(render_data, bitmap, method='flat_rgb'):
-    if method == 'flat_rgb':
+def render_data_to_bitmap(render_data, bitmap, method='flat'):
+    if method == 'flat':
         # Just RGB
         bitmap[:] = (render_data[:,:,0:3] * 255).astype(np.uint8)
     elif method == 'energy_up':
-        print(render_data[:,:,3].max())
-        bitmap[:] = (render_data[:,:,0:3] 
-                * (render_data[:,:,3] 
-                    / (render_data[:,:,3].max() + 0.001))[:, :, np.newaxis]
+        # Scaled min->max
+        energy = render_data[:,:,3]
+        normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = (np.ones_like(render_data[:,:,0:3]) 
+                * normed_energy[:, :, np.newaxis]
+                * 255).astype(np.uint8)
+    elif method == 'rgb_energy_up':
+        # Scaled min->max
+        energy = render_data[:,:,3]
+        normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = (render_data[:,:,0:3] * normed_energy[:, :, np.newaxis] 
+                * 255).astype(np.uint8)
+    elif method == 'irgb_energy_up':
+        # Scaled min->max
+        energy = render_data[:,:,3]
+        normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = ((1. - render_data[:,:,0:3] * normed_energy[:, :, np.newaxis])
+                * 255).astype(np.uint8)
+    elif method == 'energy_down':
+        # Scaled min->max
+        energy = render_data[:,:,3]
+        normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = (np.ones_like(render_data[:,:,0:3]) 
+                * normed_energy[:, :, np.newaxis]
+                * 255).astype(np.uint8)
+    elif method == 'rgb_energy_down':
+        # Scaled min->max
+        energy = render_data[:,:,3]
+        normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = (render_data[:,:,0:3] * normed_energy[:, :, np.newaxis] 
+                * 255).astype(np.uint8)
+    elif method == 'irgb_energy_down':
+        # Scaled 0->max
+        energy = render_data[:,:,3]
+        normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+        bitmap[:] = ((1 - render_data[:,:,0:3] * normed_energy[:, :, np.newaxis])
                 * 255).astype(np.uint8)
 
 
@@ -147,27 +160,37 @@ def init_indices(map_size):
     width = map_size[0]
     if len(map_size) == 1:
         print('Calculating 1D indices.')
+        indices.append(0)
+        neighbours.append([1])
         for x in range(1, width - 1):
             indices.append(x)
             neighbours.append([x - 1, x + 1])
+        indices.append(width - 1)
+        neighbours.append([width - 2])
     elif len(map_size) == 2:
         print('Calculating 2D indices.')
         height = map_size[1]
-        for x in range(1, width - 1):
-            for y in range(1, height - 1):
-                indices.append(y * width + x)
-                neighbours.append([
-                    (y - 1) * width + x,
-                    y * width + x - 1,
-                    y * width + x + 1,
-                    (y + 1) * width + x])
+        for y in range(height):
+            for x in range(width):
+                current = x * height + y
+                indices.append(current)
+                cell_neighbours = []
+                if y > 0:
+                    cell_neighbours.append(current - 1)
+                if y < height - 1:
+                    cell_neighbours.append(current + 1)
+                if x > 0:
+                    cell_neighbours.append(current - height)
+                if x < width - 1:
+                    cell_neighbours.append(current + height)
+                neighbours.append(cell_neighbours)
     else:
         raise ValueError('map_size dim {} not supported'.format(len(map_size)))
     return indices, neighbours
 
 
 def replication(agent_data, map_size):
-    agent_indices, agent_neighbours = init_indices(config['map_size'])
+    agent_indices, agent_neighbours = init_indices(map_size)
     indices = list(range(len(agent_indices)))
     random.shuffle(indices)
     for index in indices:
@@ -182,7 +205,8 @@ def replicate_stochastic(agent_data, agent_index, neighbours):
     if energy >= reproduction_threshold:  
         choose = random.sample(range(len(neighbours)), 1)[0]
         neighbour_idx = neighbours[choose]
-        if np.random.uniform() < logistic.cdf(energy - 6):
+        # if np.random.uniform() < logistic.cdf(energy - 6):
+        if np.random.uniform() < energy / 10:
             make_offspring(agent_data, agent_index, neighbour_idx)
 
 
@@ -204,7 +228,7 @@ def make_offspring(agent_data, agent_index, target_index):
             agent_data['state'][target_index, State.repo_threshold_mut],
             lower=0.0)
     mutate_array(agent_data['state'][
-        agent_index, State._colour_start:State._colour_end], 0.01,
+        target_index, State._colour_start:State._colour_end], 0.01,
         lower=0.0, higher=1.0, reflect=True)
 
 
@@ -231,59 +255,127 @@ def mutate_value(val, level, lower=None, higher=None):
     return val
 
 
-pygame.init()
-plt.ion()
+def change_resources(resources, t=-1):
+    changed = False
+    resource_mutability = np.ones(resources.shape) * 0.004
+    for i in range(len(resources)):
+        if np.random.uniform() < resource_mutability[i]:
+            # resources[0] = np.random.uniform(-1,1) * 5
+            resources[i] += np.random.uniform(-1,1) * 10
+            # resources[0] += np.random.normal() * 5
+            # resources[0] += np.random.standard_cauchy() * 5
+            changed = True
+    if changed:
+        print('Resources at {} = {} (mutabilitt {})'.format(
+            t, resources, resource_mutability))
 
-if config['gui'] == 'pygame':
-    display = pygame.display.set_mode(config['display_size'])
 
-agent_data = init_agents(config)
+def main(argv):
+    width = 32
+    height = None
+    history_len = 48
+    render_method = 'flat'
+    render_methods = ['flat', 
+            'energy_up', 'rgb_energy_up', 'irgb_energy_up', 
+            'energy_down', 'rgb_energy_down', 'irgb_energy_down']
+    try:
+        opts, args = getopt.getopt(argv,"hx:y:p:r:",["width=", "height=", "past="])
+    except getopt.GetoptError:
+        print('test.py -x <width> [-y <height> | -p <past_history>]')
+        print('    -r {}'.format(str(render_methods)))
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print('test.py -x <width> [-y <height> | -p <past_history>]')
+            print('    -r {}'.format(str(render_methods)))
+            sys.exit()
+        elif opt in ("-p", "--past"):
+            history_len = int(arg)
+        elif opt in ("-x", "--width"):
+            width = int(arg)
+        elif opt in ("-y", "--height"):
+            height = int(arg)
+        elif opt in ("-r"):
+            render_method = arg
 
-# if config['world_d'] == 1:
-#     rgb_history = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
-#             dtype=np.uint8)
+    if height is not None:
+        map_size = (width, height)
+    else:
+        map_size = (width,)
 
-if config['world_d'] == 1:
-    render_data = np.zeros((config['map_size'][0], config['num_1d_history'], 4))
-    bitmap = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
-            dtype=np.uint8)
-else:
-    render_data = np.zeros((config['map_size'] + (4,)))
-    bitmap = np.zeros((config['map_size'] + (3,)),
-            dtype=np.uint8)
+    config = dict(
+            num_resources=2,
+            # map_size=(640,),
+            map_size=map_size,
+            num_1d_history=history_len,
 
-resources = np.random.uniform(-5, 5, size=config['num_resources'])
-t = 0
-stop = False
-while True:
+            # map_size=(1280,),
+            # num_1d_history = 720,
+            display_size=(650, 410),
+            # display_size=(640, 480),
+            # display_size=(1280,720),
+
+            save_frames=True,
+            # gui = 'console',
+            # gui = 'headless',
+            gui = 'pygame',
+            )
+
+    config['num_agents'] = functools.reduce(operator.mul, config['map_size'])
+    config['world_d'] = len(config['map_size'])
+
+    pygame.init()
+    plt.ion()
+
     if config['gui'] == 'pygame':
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                stop = True
-                break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
+        display = pygame.display.set_mode(config['display_size'],pygame.FULLSCREEN)
+
+    agent_data = init_agents(config)
+
+    if config['world_d'] == 1:
+        render_data = np.zeros((config['map_size'][0], config['num_1d_history'], 4))
+        bitmap = np.zeros((config['map_size'][0], config['num_1d_history'], 3),
+                dtype=np.uint8)
+    else:
+        render_data = np.zeros((config['map_size'] + (4,)))
+        bitmap = np.zeros((config['map_size'] + (3,)),
+                dtype=np.uint8)
+
+    resources = np.random.uniform(-5, 5, size=config['num_resources'])
+    t = 0
+    stop = False
+    while True:
+        if config['gui'] == 'pygame':
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
                     stop = True
                     break
-    if stop:
-        break
-    
-    render_data = np.roll(render_data, 1, axis=1)
-    agents_to_render_data(agent_data, render_data)
-    if True:
-        render_data_to_bitmap(render_data, bitmap, method='energy_up')
-    else:
-        render_data_to_bitmap(render_data, bitmap, method='flat_rgb')
-    if config['gui'] == 'pygame' or config['save_frames']:
-        image = bitmap_to_image(bitmap, config['display_size']) 
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        stop = True
+                        break
+                    if event.key == pygame.K_r:
+                        render_method = render_methods[
+                                (render_methods.index(render_method) + 1) 
+                                % len(render_methods)]
+        if stop:
+            break
+        
+        change_resources(resources, t)
+        render_data = np.roll(render_data, 1, axis=1)
+        agents_to_render_data(agent_data, render_data)
+        render_data_to_bitmap(render_data, bitmap, method=render_method)
+        if config['gui'] == 'pygame' or config['save_frames']:
+            image = bitmap_to_image(bitmap, config['display_size']) 
 
-    if config['gui'] == 'pygame':
-        display_image(image, display)
-    if config['save_frames']:
-        image.save('output_v/loki_frame_t{:09d}.png'.format(t))
-    extract_energy(agent_data, resources)
-    replication(agent_data, config['map_size'])
-    t += 1
-    if t == 500:
-        break
+        if config['gui'] == 'pygame':
+            display_image(image, display)
+        if config['save_frames']:
+            image.save('output_v/loki_frame_t{:09d}.png'.format(t))
+        extract_energy(agent_data, resources)
+        replication(agent_data, config['map_size'])
+        t += 1
 
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
