@@ -60,6 +60,7 @@ def get_config(argv):
   render_methods = ['flat', 
       'energy_up', 'rgb_energy_up', 'irgb_energy_up', 
       'energy_down', 'rgb_energy_down', 'irgb_energy_down']
+  resource_mutation_level = 0.1
   try:
     opts, args = getopt.getopt(argv,'hx:y:p:r:q:',
             ['width=', 'height=', 'past=', 'mut_res='])
