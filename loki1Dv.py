@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-
 import colorsys
 from enum import IntEnum
 import functools
 import getopt
+import io
 from matplotlib import pyplot as plt
 import numpy as np
 import operator
@@ -41,9 +41,6 @@ class State(IntEnum):
   _num = 8
 
 
-
-
-
 def memoize(obj):
   cache = obj.cache = {}
   @functools.wraps(obj)
@@ -55,7 +52,6 @@ def memoize(obj):
   return memoizer
 
 
-
 def get_config(argv):
   width = 32
   height = None
@@ -65,23 +61,27 @@ def get_config(argv):
       'energy_up', 'rgb_energy_up', 'irgb_energy_up', 
       'energy_down', 'rgb_energy_down', 'irgb_energy_down']
   try:
-    opts, args = getopt.getopt(argv,"hx:y:p:r:",["width=", "height=", "past="])
+    opts, args = getopt.getopt(argv,'hx:y:p:r:q:',
+            ['width=', 'height=', 'past=', 'mut_res='])
   except getopt.GetoptError:
     print('test.py -x <width> [-y <height> | -p <past_history>]')
     print('    -r {}'.format(str(render_methods)))
+    print('    -q resource_mutation_level')
     sys.exit(2)
   for opt, arg in opts:
     if opt == '-h':
       print('test.py -x <width> [-y <height> | -p <past_history>]')
       print('    -r {}'.format(str(render_methods)))
       sys.exit()
-    elif opt in ("-p", "--past"):
+    elif opt in ('-p', '--past'):
       history_len = int(arg)
-    elif opt in ("-x", "--width"):
+    elif opt in ('-q', '--res_mut'):
+      resource_mutation_level = float(arg)
+    elif opt in ('-x', '--width'):
       width = int(arg)
-    elif opt in ("-y", "--height"):
+    elif opt in ('-y', '--height'):
       height = int(arg)
-    elif opt in ("-r"):
+    elif opt in ('-r'):
       render_method = arg
 
   if height is not None:
@@ -91,6 +91,7 @@ def get_config(argv):
 
   config = dict(
       num_resources=2,
+      resource_mutation_level=resource_mutation_level,
       # map_size=(640,),
       map_size=map_size,
       num_1d_history=history_len,
@@ -115,9 +116,10 @@ def get_config(argv):
 
 class Loki():
   def __init__(self, config):
+    self._time = 0
     if config['gui'] == 'pygame':
-      # self._display = pygame.display.set_mode(config['display_size'],pygame.FULLSCREEN)
-      self._display = pygame.display.set_mode(config['display_size'])
+      self._display = pygame.display.set_mode(config['display_size'],pygame.FULLSCREEN)
+      # self._display = pygame.display.set_mode(config['display_size'])
 
     self._agent_data = self._init_agents(config)
 
@@ -136,23 +138,29 @@ class Loki():
     self._render_data = np.roll(self._render_data, 1, axis=1)
     self._agents_to_render_data(self._agent_data, self._render_data)
     self._render_data_to_bitmap(self._render_data, self._bitmap, method=render_method)
-    if self._config['gui'] == 'pygame' or self._config['save_frames']:
+    if (self._config['gui'] == 'pygame' or self._config['save_frames'] or
+        self._config['gui'] == 'yield_frame'):
+    
       image = self._bitmap_to_image(self._bitmap, self._config['display_size']) 
   
-    if self._config['gui'] == 'pygame':
-      self._display_image(image, self._display)
-    if self._config['save_frames']:
-      image.save('output_v/loki_frame_t{:09d}.png'.format(t))
+      if self._config['gui'] == 'pygame':
+        self._display_image(image, self._display)
+      if self._config['save_frames']:
+        image.save('output_v/loki_frame_t{:09d}.png'.format(t))
+      if self._config['gui'] == 'yield_frame':
+        imgByteArr = io.BytesIO()
+        image.save(imgByteArr, format='PNG')
+        return imgByteArr.getvalue()
 
-  def _display_image(self, image, display):
-    bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
-    surfarray.blit_array(display, bitmap)
-    pygame.display.flip()
+  def step_frame(self, render_method):
+    self.step()
+    return self.render(render_method)
 
-  def step(self, t):
-    self._change_resources(self._resources, t)
+  def step(self):
+    self._change_resources(self._resources)
     self._extract_energy(self._agent_data, self._resources)
     self._replication(self._agent_data, self._config['map_size'])
+    self._time += 1
 
   def _init_agents(self, config):
     """Creates dict with all agents' key and state data."""
@@ -243,6 +251,11 @@ class Loki():
   def _bitmap_to_image(self, rgb_data, display_size):
     return Image.fromarray(rgb_data.swapaxes(0,1)).resize(display_size)
 
+  def _display_image(self, image, display):
+    bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
+    surfarray.blit_array(display, bitmap)
+    pygame.display.flip()
+
   def _replication(self, agent_data, map_size):
     agent_indices, agent_neighbours = init_indices(map_size)
     indices = list(range(len(agent_indices)))
@@ -283,19 +296,19 @@ class Loki():
       target_index, State._colour_start:State._colour_end], 0.01,
       lower=0.0, higher=1.0, reflect=True)
   
-  def _change_resources(self, resources, t=-1):
+  def _change_resources(self, resources):
     changed = False
-    resource_mutability = np.ones(resources.shape) * 0.004
+    resource_mutability = np.ones(resources.shape) * self._config['resource_mutation_level']
     for i in range(len(resources)):
       if np.random.uniform() < resource_mutability[i]:
-        # resources[0] = np.random.uniform(-1,1) * 5
-        resources[i] += np.random.uniform(-1,1) * 10
+        resources[0] = np.random.uniform(-1,1) * 5
+        # resources[i] += np.random.uniform(-1,1) * 10
         # resources[0] += np.random.normal() * 5
         # resources[0] += np.random.standard_cauchy() * 5
         changed = True
     if changed:
       print('Resources at {} = {} (mutabilitt {})'.format(
-        t, resources, resource_mutability))
+        self._time, resources, resource_mutability))
 
   
 @memoize
@@ -366,7 +379,6 @@ def main(argv):
   pygame.init()
   plt.ion()
 
-  t = 0
   stop = False
   while True:
     if config['gui'] == 'pygame':
@@ -385,10 +397,9 @@ def main(argv):
     if stop:
       break
     
-    loki.step(t)
-    loki.render(render_method)
+    loki.step()
+    image = loki.render(render_method)
 
-  t += 1
 
 # class FrameGenerator():
 
