@@ -147,13 +147,12 @@ class Loki():
 
   def render(self, render_method):
     self._render_data = np.roll(self._render_data, 1, axis=1)
-    self._agents_to_render_data(self._agent_data, self._render_data)
-    self._render_data_to_bitmap(self._render_data, self._bitmap,
-            method=render_method)
+    self._agents_to_render_data()
+    self._render_data_to_bitmap(method=render_method)
     if (self._config['gui'] == 'pygame' or self._config['save_frames'] or
         self._config['gui'] == 'yield_frame'):
 
-      image = self._bitmap_to_image(self._bitmap, self._config['display_size'])
+      image = self._bitmap_to_image(self._config['display_size'])
 
       if self._config['gui'] == 'pygame':
         self._display_image(image, self._display)
@@ -169,9 +168,9 @@ class Loki():
     return self.render(render_method)
 
   def step(self):
-    self._change_resources(self._resources)
-    self._extract_energy(self._agent_data, self._resources)
-    self._replication(self._agent_data, self._config['map_size'])
+    self._change_resources()
+    self._extract_energy()
+    self._replication(self._config['map_size'])
     self._time += 1
 
   def _init_agents(self, config):
@@ -236,90 +235,95 @@ class Loki():
     plt.pause(0.0001)
     self._resources_metrics *= 0.9
 
-  def _extract_energy(self, agent_data, resources):
+  def _extract_energy(self):
     # env is list of resources
-    dist_squared = np.square(agent_data['keys'][:,:,Key.mean] - resources)
-    sigmas = agent_data['keys'][:,:,Key.sigma]
-    agent_data['keys'][:,:,Key.energy] = (
+    dist_squared = np.square(self._agent_data['keys'][:,:,Key.mean]
+        - self._resources)
+    sigmas = self._agent_data['keys'][:,:,Key.sigma]
+    self._agent_data['keys'][:,:,Key.energy] = (
         (np.exp(-dist_squared / (2 * sigmas * sigmas)))
         / (sigmas * sqrt_2_pi))
-    agent_data['state'][:,State.energy] += agent_data[
+    self._agent_data['state'][:,State.energy] += self._agent_data[
         'keys'][:,:,Key.energy].max(axis=1)  * 0.1
-    # print('Max energy', agent_data['state'][:,State.energy].max())
+    # print('Max energy', self._agent_data['state'][:,State.energy].max())
 
-  def _agents_to_render_data(self, agent_data, render_data, row=0):
+  def _agents_to_render_data(self, row=0):
     # Updata RGB matrix
-    new_render_data = agent_data['state'][
+    new_render_data = self._agent_data['state'][
         :,[State.red, State.green, State.blue, State.energy]]
-    if new_render_data.shape[0] == render_data.shape[0]:
-      # new_render_data is 1D, i.e. a row
-      render_data[:, row] = new_render_data
+    if new_render_data.shape[0] == self._render_data.shape[0]:
+      # new_self._render_data is 1D, i.e. a row
+      self._render_data[:, row] = new_render_data
     else:
       # new_render_data is 2D, i.e. data for the whole render_data map.
-      render_data[:] = new_render_data.reshape(render_data.shape)
+      self._render_data[:] = new_render_data.reshape(self._render_data.shape)
 
-  def _render_data_to_bitmap(self, render_data, bitmap, method='flat'):
+  def _render_data_to_bitmap(self, method='flat'):
     if method == 'flat':
       # Just RGB
-      bitmap[:] = (render_data[:,:,0:3] * 255).astype(np.uint8)
+      self._bitmap[:] = (self._render_data[:,:,0:3] * 255).astype(np.uint8)
     elif method == 'energy_up':
       # Scaled min->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = (np.ones_like(render_data[:,:,0:3])
+      self._bitmap[:] = (np.ones_like(self._render_data[:,:,0:3])
           * normed_energy[:, :, np.newaxis]
           * 255).astype(np.uint8)
     elif method == 'rgb_energy_up':
       # Scaled min->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = (render_data[:,:,0:3] * normed_energy[:, :, np.newaxis]
-          * 255).astype(np.uint8)
+      self._bitmap[:] = (self._render_data[:,:,0:3]
+              * normed_energy[:, :, np.newaxis]
+              * 255).astype(np.uint8)
     elif method == 'irgb_energy_up':
       # Scaled min->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = ((1. - render_data[:,:,0:3] * normed_energy[:, :, np.newaxis])
+      self._bitmap[:] = ((1. - self._render_data[:,:,0:3]
+          * normed_energy[:, :, np.newaxis])
           * 255).astype(np.uint8)
     elif method == 'energy_down':
       # Scaled min->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = (np.ones_like(render_data[:,:,0:3])
+      self._bitmap[:] = (np.ones_like(self._render_data[:,:,0:3])
           * normed_energy[:, :, np.newaxis]
           * 255).astype(np.uint8)
     elif method == 'rgb_energy_down':
       # Scaled min->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = (render_data[:,:,0:3] * normed_energy[:, :, np.newaxis]
-          * 255).astype(np.uint8)
+      self._bitmap[:] = (self._render_data[:,:,0:3]
+              * normed_energy[:, :, np.newaxis]
+              * 255).astype(np.uint8)
     elif method == 'irgb_energy_down':
       # Scaled 0->max
-      energy = render_data[:,:,3]
+      energy = self._render_data[:,:,3]
       normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      bitmap[:] = ((1 - render_data[:,:,0:3] * normed_energy[:, :, np.newaxis])
+      self._bitmap[:] = ((1 - self._render_data[:,:,0:3]
+          * normed_energy[:, :, np.newaxis])
           * 255).astype(np.uint8)
 
-  def _bitmap_to_image(self, rgb_data, display_size):
-    return Image.fromarray(rgb_data.swapaxes(0,1)).resize(display_size)
+  def _bitmap_to_image(self, display_size):
+    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
 
   def _display_image(self, image, display):
     bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
     surfarray.blit_array(display, bitmap)
     pygame.display.flip()
 
-  def _replication(self, agent_data, map_size):
+  def _replication(self, map_size):
     agent_indices, agent_neighbours = init_indices(map_size)
     indices = list(range(len(agent_indices)))
     random.shuffle(indices)
     for index in indices:
-      self._replicate_stochastic(agent_data, agent_indices[index],
+      self._replicate_stochastic(agent_indices[index],
           agent_neighbours[index])
 
-  def _replicate_stochastic(self, agent_data, agent_index, neighbours):
-    energy = agent_data['state'][agent_index, State.energy]
-    reproduction_threshold = agent_data['state'][
+  def _replicate_stochastic(self, agent_index, neighbours):
+    energy = self._agent_data['state'][agent_index, State.energy]
+    reproduction_threshold = self._agent_data['state'][
         agent_index, State.repo_threshold]
     if energy >= reproduction_threshold:
       choose = random.sample(range(len(neighbours)), 1)[0]
@@ -327,51 +331,53 @@ class Loki():
 
       # No regard for neighour's energy
       # if np.random.uniform() < energy / 10:
-      #   self._make_offspring(agent_data, agent_index, neighbour_idx)
+      #   self._make_offspring(self._agent_data, agent_index, neighbour_idx)
 
       # No chance if zero energy, 50:50 if matched, and 100% if double.
-      opponent_energy = agent_data['state'][neighbour_idx, State.energy]
+      opponent_energy = self._agent_data['state'][neighbour_idx, State.energy]
       chance =  energy / (opponent_energy + 0.00001)
       if chance > 2:
         chance = 2
       if np.random.uniform() < chance / 2:
-        self._make_offspring(agent_data, agent_index, neighbour_idx)
+        self._make_offspring(agent_index, neighbour_idx)
 
-  def _make_offspring(self, agent_data, agent_index, target_index):
-    agent_data['state'][agent_index, State.energy] /= 2
-    agent_data['keys'][target_index, :] = agent_data['keys'][agent_index, :]
-    agent_data['state'][target_index, :] = agent_data['state'][agent_index, :]
+  def _make_offspring(self, agent_index, target_index):
+    self._agent_data['state'][agent_index, State.energy] /= 2
+    self._agent_data['keys'][target_index, :] = self._agent_data[
+            'keys'][agent_index, :]
+    self._agent_data['state'][target_index, :] = self._agent_data[
+            'state'][agent_index, :]
 
-    mutate_array(agent_data['keys'][target_index, :, Key.mean],
-        agent_data['keys'][target_index, :, Key.mean_mut])
-    mutate_array(agent_data['keys'][target_index, :, Key.mean_mut],
+    mutate_array(self._agent_data['keys'][target_index, :, Key.mean],
+        self._agent_data['keys'][target_index, :, Key.mean_mut])
+    mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
         0.01, lower=0.0, higher=1.0, reflect=True)
-    mutate_array(agent_data['keys'][target_index, :, Key.sigma],
-        agent_data['keys'][target_index, :, Key.sigma_mut], lower=1.0)
-    mutate_array(agent_data['keys'][target_index, :, Key.sigma_mut],
+    mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
+        self._agent_data['keys'][target_index, :, Key.sigma_mut], lower=1.0)
+    mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
         0.01, lower=0.0, higher=1.0, reflect=True)
-    agent_data['state'][target_index, State.repo_threshold] = mutate_value(
-        agent_data['state'][target_index, State.repo_threshold],
-        agent_data['state'][target_index, State.repo_threshold_mut],
+    self._agent_data['state'][target_index, State.repo_threshold] = mutate_value(
+        self._agent_data['state'][target_index, State.repo_threshold],
+        self._agent_data['state'][target_index, State.repo_threshold_mut],
         lower=0.0)
-    mutate_array(agent_data['state'][
+    mutate_array(self._agent_data['state'][
       target_index, State._colour_start:State._colour_end], 0.01,
       lower=0.0, higher=1.0, reflect=True)
 
-  def _change_resources(self, resources):
+  def _change_resources(self):
     changed = False
-    resource_mutability = np.ones(resources.shape) * self._config[
+    resource_mutability = np.ones(self._resources.shape) * self._config[
             'resource_mutation_level']
-    for i in range(len(resources)):
+    for i in range(len(self._resources)):
       if np.random.uniform() < resource_mutability[i]:
-        # resources[0] = np.random.uniform(-1,1) * 5
-        resources[i] += np.random.uniform(-1,1)
-        # resources[0] += np.random.normal() * 5
-        # resources[0] += np.random.standard_cauchy() * 5
+        # self._resources[0] = np.random.uniform(-1,1) * 5
+        self._resources[i] += np.random.uniform(-1,1)
+        # self._resources[0] += np.random.normal() * 5
+        # self._resources[0] += np.random.standard_cauchy() * 5
         changed = True
     if changed:
       print('Resources at {} = {} (mutabilitt {})'.format(
-        self._time, resources, resource_mutability))
+        self._time, self._resources, resource_mutability))
 
 
 
