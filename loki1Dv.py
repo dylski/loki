@@ -3,6 +3,7 @@ import colorsys
 from enum import IntEnum
 import functools
 import getopt
+import math
 import io
 from matplotlib import pyplot as plt
 import numpy as np
@@ -15,6 +16,9 @@ import random
 from scipy.stats import logistic
 import sys
 
+
+# TODO Negative resources don't work!!!
+# raise ValueError("Negative resources don't work!")
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
@@ -57,11 +61,12 @@ def memoize(obj):
 
 
 def get_config(argv):
-  width = 32
+  width = 128
   height = None
   history_len = 48
   render_method = 'flat'
-  resource_mutation_level = 0.01
+  resource_mutation_level = 0.00
+  extraction_method = 'max'
   try:
     opts, args = getopt.getopt(argv,'hx:y:p:r:q:',
             ['width=', 'height=', 'past=', 'mut_res='])
@@ -95,6 +100,7 @@ def get_config(argv):
   config = dict(
       num_resources=2,
       resource_mutation_level=resource_mutation_level,
+      extraction_method = 'mean',
       # map_size=(640,),
       map_size=map_size,
       num_1d_history=history_len,
@@ -135,7 +141,27 @@ class Loki():
       self._render_data = np.zeros((config['map_size'] + (4,)))
       self._bitmap = np.zeros((config['map_size'] + (3,)),
         dtype=np.uint8)
-    self._resources = np.random.uniform(-5, 5, size=config['num_resources'])
+    # self._resources = np.zeros(config['num_resources'])
+    # HACK FOR TESTING
+    self._resources = np.random.uniform(-3, 3,
+            size=(config['num_agents'], config['num_resources']))
+    window_len = 100
+    left_off = math.ceil((window_len - 1) / 2)
+    right_off = math.ceil((window_len - 2) / 2)
+    s = np.r_[self._resources[:,0][window_len-1:0:-1],
+              self._resources[:,0],
+              self._resources[:,0][-2:-window_len-1:-1]]
+    w = np.ones(window_len,'d')
+    # import pdb; pdb.set_trace()
+    self._resources[:,0] = np.convolve(
+            w / w.sum(), s, mode='valid')[left_off : -right_off]
+    s = np.r_[self._resources[:,1][window_len-1:0:-1],
+              self._resources[:,1],
+              self._resources[:,1][-2:-window_len-1:-1]]
+    w = np.ones(window_len,'d')
+    self._resources[:,1] = np.convolve(
+            w / w.sum(), s, mode='valid')[left_off : -right_off]
+
     self._config = config
     self._data = {}  # For plotting, etc.
     # mean min, max; sigma min, max
@@ -144,6 +170,7 @@ class Loki():
     self._resources_metrics[1] = -np.inf
     self._resources_metrics[2] = np.inf
     self._resources_metrics[3] = -np.inf
+    print('Resources: ', self._resources)
 
   def render(self, render_method):
     self._render_data = np.roll(self._render_data, 1, axis=1)
@@ -171,6 +198,7 @@ class Loki():
     self._change_resources()
     self._extract_energy()
     self._replication(self._config['map_size'])
+    self._gather_data()
     self._time += 1
 
   def _init_agents(self, config):
@@ -184,9 +212,10 @@ class Loki():
     keys = agent_data['keys']
     # #agents, #resources
     keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
-    keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
-    keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2])
-    keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2])
+    # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
+    keys[:,:,Key.sigma] = np.ones(keys.shape[0:2])
+    keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.1
+    keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.1
     state = agent_data['state']
     state[:,State.repo_threshold] = np.random.uniform(size=state.shape[0]) * 5
     state[:,State.repo_threshold_mut] = np.random.uniform(size=state.shape[0])
@@ -199,13 +228,38 @@ class Loki():
       self._data['energy_history'] = []
     self._data['energy_history'].append(
         self._agent_data['state'][:, State.energy])
+    if 'mean_history' not in self._data:
+      self._data['mean_history'] = []
+    self._data['mean_history'].append(
+        self._agent_data['keys'][:, :, Key.mean].mean(axis=0))
+    if 'sigma_history' not in self._data:
+      self._data['sigma_history'] = []
+    self._data['sigma_history'].append(
+        self._agent_data['keys'][:, :, Key.sigma].mean(axis=0))
 
   def plot_data(self):
     plt.clf()
-    ax = plt.subplot(3,2,1)
-    ax.hist(self._agent_data['state'][:, State.energy], 20)
     # import pdb; pdb.set_trace()
+    ax = plt.subplot(3,2,1)
+    ax.plot(np.array(self._data['mean_history'])[:])
+    ax.set_title('Mean history')
+    ax = plt.subplot(3,2,2)
+    ax.plot(np.array(self._data['sigma_history'])[:])
+    ax.set_title('Sigma history')
+
+    if self._config['num_resources'] == 1:
+      plt.tight_layout()
+      plt.draw()
+      plt.pause(0.0001)
+      return
+
     ax = plt.subplot(3,2,3)
+    ax.hist(self._agent_data['state'][:, State.energy], 20)
+    ax = plt.subplot(3,2,4)
+    ax.plot(self._resources)
+    # import pdb; pdb.set_trace()
+    ax = plt.subplot(3,2,5)
+    # Get min and max for resource means.
     m0_min = self._agent_data['keys'][:, :, Key.mean].min(axis=0)
     m0_max = self._agent_data['keys'][:, :, Key.mean].max(axis=0)
     smaller = m0_min < self._resources_metrics[0]
@@ -218,7 +272,8 @@ class Loki():
     ax.set_ylim(self._resources_metrics[0][1], self._resources_metrics[1][1])
     ax.set_title('Mean')
 
-    ax = plt.subplot(3,2,4)
+    ax = plt.subplot(3,2,6)
+    # Get min and max for resource sigmas.
     m0_min = self._agent_data['keys'][:, :, Key.sigma].min(axis=0)
     m0_max = self._agent_data['keys'][:, :, Key.sigma].max(axis=0)
     smaller = m0_min < self._resources_metrics[2]
@@ -237,14 +292,20 @@ class Loki():
 
   def _extract_energy(self):
     # env is list of resources
+    # import pdb; pdb.set_trace()
     dist_squared = np.square(self._agent_data['keys'][:,:,Key.mean]
         - self._resources)
     sigmas = self._agent_data['keys'][:,:,Key.sigma]
     self._agent_data['keys'][:,:,Key.energy] = (
-        (np.exp(-dist_squared / (2 * sigmas * sigmas)))
-        / (sigmas * sqrt_2_pi))
-    self._agent_data['state'][:,State.energy] += self._agent_data[
-        'keys'][:,:,Key.energy].max(axis=1)  * 0.1
+        np.exp(-dist_squared / (2 * sigmas * sigmas))
+        / (sigmas * sqrt_2_pi)
+        )
+    if self._config['extraction_method'] == 'max':
+        self._agent_data['state'][:,State.energy] += self._agent_data[
+            'keys'][:,:,Key.energy].max(axis=1)  * 0.1
+    elif self._config['extraction_method'] == 'mean':
+        self._agent_data['state'][:,State.energy] += self._agent_data[
+            'keys'][:,:,Key.energy].mean(axis=1)  * 0.1
     # print('Max energy', self._agent_data['state'][:,State.energy].max())
 
   def _agents_to_render_data(self, row=0):
@@ -347,15 +408,17 @@ class Loki():
             'keys'][agent_index, :]
     self._agent_data['state'][target_index, :] = self._agent_data[
             'state'][agent_index, :]
+    self._mutate_agent(target_index)
 
+  def _mutate_agent(self, target_index):
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean],
         self._agent_data['keys'][target_index, :, Key.mean_mut])
-    mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
-        0.01, lower=0.0, higher=1.0, reflect=True)
+    #mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
+    #    0.01, lower=0.0, higher=1.0, reflect=True)
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
         self._agent_data['keys'][target_index, :, Key.sigma_mut], lower=1.0)
-    mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
-        0.01, lower=0.0, higher=1.0, reflect=True)
+    #mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
+    #    0.01, lower=0.0, higher=1.0, reflect=True)
     self._agent_data['state'][target_index, State.repo_threshold] = mutate_value(
         self._agent_data['state'][target_index, State.repo_threshold],
         self._agent_data['state'][target_index, State.repo_threshold_mut],
@@ -366,9 +429,9 @@ class Loki():
 
   def _change_resources(self):
     changed = False
-    resource_mutability = np.ones(self._resources.shape) * self._config[
+    resource_mutability = np.ones(self._resources.shape[1]) * self._config[
             'resource_mutation_level']
-    for i in range(len(self._resources)):
+    for i in range(self._resources.shape[1]):
       if np.random.uniform() < resource_mutability[i]:
         # self._resources[0] = np.random.uniform(-1,1) * 5
         self._resources[i] += np.random.uniform(-1,1)
@@ -439,7 +502,7 @@ def mutate_value(val, level, lower=None, higher=None):
    val = higher
   return val
 
-def test_mutate():
+def test_mutate(argv):
   config = get_config(argv)
   print(config)
   loki = Loki(config)
@@ -466,8 +529,11 @@ def test_mutate():
     if stop:
       break
 
-    loki.step()
+    for i in range(loki._config['num_agents']):
+      loki._mutate_agent(i)
     image = loki.render(render_method)
+
+
 
 def main(argv):
   config = get_config(argv)
@@ -501,9 +567,15 @@ def main(argv):
     loki.step()
     image = loki.render(render_method)
 
+testing_mutate = False
 
-# class FrameGenerator():
-
-
-if __name__ == "__main__":
-  main(sys.argv[1:])
+if __name__ == '__main__':
+  # import argparse
+  # ap = argparse.ArgumentParser()
+  # ap.add_argument("-m", "--test_mutate", help="test_mutateex",
+  #     action='store_true')
+  # args = vars(ap.parse_args())
+  if testing_mutate:
+    test_mutate(sys.argv[1:])
+  else:
+    main(sys.argv[1:])
