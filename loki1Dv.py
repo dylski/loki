@@ -2,7 +2,7 @@
 import colorsys
 from enum import IntEnum
 import functools
-import getopt
+# import getopt
 import math
 import io
 from matplotlib import pyplot as plt
@@ -15,6 +15,7 @@ from pygame import surfarray
 import random
 from scipy.stats import logistic
 import sys
+import argparse
 
 
 # TODO Negative resources don't work!!!
@@ -49,6 +50,10 @@ render_methods = ['flat',
   'energy_up', 'rgb_energy_up', 'irgb_energy_up',
   'energy_down', 'rgb_energy_down', 'irgb_energy_down']
 
+display_modes = ['pygame', 'console', 'headless', 'fullscreen', 'windowed',
+    'yield_frame']
+
+
 def memoize(obj):
   cache = obj.cache = {}
   @functools.wraps(obj)
@@ -60,61 +65,40 @@ def memoize(obj):
   return memoizer
 
 
-def get_config(argv):
-  width = 128
-  height = None
-  history_len = 48
-  render_method = 'flat'
-  resource_mutation_level = 0.00
-  extraction_method = 'max'
-  try:
-    opts, args = getopt.getopt(argv,'hx:y:p:r:q:',
-            ['width=', 'height=', 'past=', 'mut_res='])
-  except getopt.GetoptError:
-    print('test.py -x <width> [-y <height> | -p <past_history>]')
-    print('    -r {}'.format(str(render_methods)))
-    print('    -q resource_mutation_level')
-    sys.exit(2)
-  for opt, arg in opts:
-    if opt == '-h':
-      print('test.py -x <width> [-y <height> | -p <past_history>]')
-      print('    -r {}'.format(str(render_methods)))
-      print('    -q resource_mutation_level')
-      sys.exit()
-    elif opt in ('-p', '--past'):
-      history_len = int(arg)
-    elif opt in ('-q', '--res_mut'):
-      resource_mutation_level = float(arg)
-    elif opt in ('-x', '--width'):
-      width = int(arg)
-    elif opt in ('-y', '--height'):
-      height = int(arg)
-    elif opt in ('-r'):
-      render_method = arg
+def get_config(width=128,
+      height=None,
+      num_1d_history=48,
+      render_method='flat',
+      extraction_method='mean',
+      resource_mutation=0.00,
+      display='windowed'):
 
-  if height is not None:
-    map_size = (width, height)
-  else:
-    map_size = (width,)
+  gui = display
+  if (display == 'windowed' or display == 'fullscreen'):
+    gui = 'pygame'
+  elif display == 'headless':
+    gui = 'yield_frame'
 
   config = dict(
       num_resources=2,
-      resource_mutation_level=resource_mutation_level,
-      extraction_method = 'mean',
-      # map_size=(640,),
-      map_size=map_size,
-      num_1d_history=history_len,
+      resource_mutation_level=resource_mutation,
+      extraction_method = extraction_method,
 
+      map_size=(width,) if height is None else (width, height),
+      # map_size=(640,),
       # map_size=(1280,),
+
+      num_1d_history=num_1d_history,
       # num_1d_history = 720,
+
       display_size=(650, 410),
       # display_size=(640, 480),
       # display_size=(1280,720),
 
+      gui=gui,
+      display=display,
+
       save_frames=False,
-      # gui = 'console',
-      # gui = 'headless',
-      gui = 'pygame',
       )
 
   config['num_agents'] = functools.reduce(operator.mul, config['map_size'])
@@ -124,10 +108,14 @@ def get_config(argv):
 
 class Loki():
   def __init__(self, config):
+    print(config)
     self._time = 0
     if config['gui'] == 'pygame':
-      # self._display = pygame.display.set_mode(config['display_size'],pygame.FULLSCREEN)
-      self._display = pygame.display.set_mode(config['display_size'])
+      if config['display'] == 'fullscreen':
+        self._display = pygame.display.set_mode(
+          config['display_size'],pygame.FULLSCREEN)
+      else:
+        self._display = pygame.display.set_mode(config['display_size'])
 
     self._agent_data = self._init_agents(config)
 
@@ -145,7 +133,7 @@ class Loki():
     # HACK FOR TESTING
     self._resources = np.random.uniform(-3, 3,
             size=(config['num_agents'], config['num_resources']))
-    window_len = 100
+    window_len = config['map_size'][0]
     left_off = math.ceil((window_len - 1) / 2)
     right_off = math.ceil((window_len - 2) / 2)
     s = np.r_[self._resources[:,0][window_len-1:0:-1],
@@ -424,7 +412,7 @@ class Loki():
         self._agent_data['state'][target_index, State.repo_threshold_mut],
         lower=0.0)
     mutate_array(self._agent_data['state'][
-      target_index, State._colour_start:State._colour_end], 0.01,
+      target_index, State._colour_start:State._colour_end], 0.001,
       lower=0.0, higher=1.0, reflect=True)
 
   def _change_resources(self):
@@ -502,9 +490,7 @@ def mutate_value(val, level, lower=None, higher=None):
    val = higher
   return val
 
-def test_mutate(argv):
-  config = get_config(argv)
-  print(config)
+def test_mutate(config):
   loki = Loki(config)
   render_method = render_methods[0]
   pygame.init()
@@ -535,9 +521,7 @@ def test_mutate(argv):
 
 
 
-def main(argv):
-  config = get_config(argv)
-  print(config)
+def main(config):
   loki = Loki(config)
   render_method = render_methods[0]
 
@@ -559,6 +543,7 @@ def main(argv):
             render_method = render_methods[
                 (render_methods.index(render_method) + 1)
                 % len(render_methods)]
+            print('Render method {}'.format(render_method))
           if event.key == pygame.K_p:
             loki.plot_data()
     if stop:
@@ -567,15 +552,52 @@ def main(argv):
     loki.step()
     image = loki.render(render_method)
 
-testing_mutate = False
 
 if __name__ == '__main__':
-  # import argparse
+  import argparse
+
+  ap = argparse.ArgumentParser()
+  ap.add_argument("-x", "--width", help="Cells wide", default=128)
+  ap.add_argument("-y", "--height", help="Cells high (only 2D)", default=None)
+  ap.add_argument("-g", "--gen_history", help="Size of history (for 1D)",
+          default=48)
+  ap.add_argument("-r", "--render_method", help="Render methods [{}]".format(
+    render_methods), default=render_methods[0])
+  ap.add_argument("-e", "--extraction", help="Extraction method [mean|max]",
+    default='max')
+  ap.add_argument("-n", "--resource_mutation", help="Resrouce mutation level",
+    default=0.)
+  ap.add_argument("-d", "--display",
+      help="Display mode [{}]".format(display_modes), default=display_modes[0])
+  args = vars(ap.parse_args())
+  # ap.add_argument("-t", "--testing", help="test_mutateex",
+  #     action='store_true')
+
+
+  width = int(args.get("width"))
+  height = None if args.get("height") is None else int(args.get("height"))
+  gen_history = int(args.get("gen_history"))
+  render_method = args.get("render_method")
+  extraction = args.get("extraction")
+  resource_mutation = float(args.get("resource_mutation"))
+  display = args.get("display")
+  testing = False
+  # testing = args.get("testing")
+
+  config = get_config(width=width,
+      height=height,
+      num_1d_history=gen_history,
+      render_method=render_method,
+      extraction_method=extraction,
+      resource_mutation=resource_mutation,
+      display=display)
+
+  print(config)
   # ap = argparse.ArgumentParser()
   # ap.add_argument("-m", "--test_mutate", help="test_mutateex",
   #     action='store_true')
   # args = vars(ap.parse_args())
-  if testing_mutate:
-    test_mutate(sys.argv[1:])
+  if testing:
+    test_mutate(config)
   else:
-    main(sys.argv[1:])
+    main(config)

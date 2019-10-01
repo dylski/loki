@@ -16,8 +16,8 @@ def gen(loki):
 @app.route('/video_feed')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
-    config = loki.get_config('-x 64 -p 48'.split())
-    config['gui'] = 'yield_frame'
+    config = loki.get_config(width=64, num_1d_history=48, display='headless')
+    # config['gui'] = 'yield_frame'
     return Response(gen(loki.Loki(config)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 if __name__ == '__main__':
