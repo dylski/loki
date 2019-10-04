@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import wxdisplay
 import colorsys
 from enum import IntEnum
 import functools
@@ -17,9 +18,6 @@ from scipy.stats import logistic
 import sys
 import argparse
 
-
-# TODO Negative resources don't work!!!
-# raise ValueError("Negative resources don't work!")
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
@@ -50,7 +48,7 @@ render_methods = ['flat',
   'energy_up', 'rgb_energy_up', 'irgb_energy_up',
   'energy_down', 'rgb_energy_down', 'irgb_energy_down']
 
-display_modes = ['pygame', 'console', 'headless', 'fullscreen', 'windowed',
+display_modes = ['pygame', 'console', 'headless', 'fullscreen', 'ssh_fullscreen', 'windowed',
     'yield_frame']
 
 
@@ -74,7 +72,7 @@ def get_config(width=128,
       display='windowed'):
 
   gui = display
-  if (display == 'windowed' or display == 'fullscreen'):
+  if (display == 'windowed' or display == 'fullscreen' or display == 'ssh_fullscreen'):
     gui = 'pygame'
   elif display == 'headless':
     gui = 'yield_frame'
@@ -91,7 +89,7 @@ def get_config(width=128,
       num_1d_history=num_1d_history,
       # num_1d_history = 720,
 
-      display_size=(650, 410),
+      display_size=(656, 416),
       # display_size=(640, 480),
       # display_size=(1280,720),
 
@@ -114,6 +112,9 @@ class Loki():
       if config['display'] == 'fullscreen':
         self._display = pygame.display.set_mode(
           config['display_size'],pygame.FULLSCREEN)
+      elif config['display'] == 'ssh_fullscreen':
+          wx = wxdisplay.wxdisplay()
+          self._display = wx.screen
       else:
         self._display = pygame.display.set_mode(config['display_size'])
 
@@ -202,8 +203,8 @@ class Loki():
     keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
     # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
     keys[:,:,Key.sigma] = np.ones(keys.shape[0:2])
-    keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.1
-    keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.1
+    keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
+    keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
     state = agent_data['state']
     state[:,State.repo_threshold] = np.random.uniform(size=state.shape[0]) * 5
     state[:,State.repo_threshold_mut] = np.random.uniform(size=state.shape[0])
@@ -401,18 +402,20 @@ class Loki():
   def _mutate_agent(self, target_index):
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean],
         self._agent_data['keys'][target_index, :, Key.mean_mut])
-    #mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
-    #    0.01, lower=0.0, higher=1.0, reflect=True)
+    mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
+        0.001, lower=0.0, higher=1.0, reflect=True)
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
         self._agent_data['keys'][target_index, :, Key.sigma_mut], lower=1.0)
-    #mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
-    #    0.01, lower=0.0, higher=1.0, reflect=True)
-    self._agent_data['state'][target_index, State.repo_threshold] = mutate_value(
-        self._agent_data['state'][target_index, State.repo_threshold],
-        self._agent_data['state'][target_index, State.repo_threshold_mut],
-        lower=0.0)
+    mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
+        0.001, lower=0.0, higher=1.0, reflect=True)
+    self._agent_data['state'][
+            target_index, State.repo_threshold] = mutate_value(
+                    self._agent_data['state'][target_index, State.repo_threshold],
+                    self._agent_data['state'][target_index, 
+                        State.repo_threshold_mut],
+                    lower=0.0)
     mutate_array(self._agent_data['state'][
-      target_index, State._colour_start:State._colour_end], 0.001,
+      target_index, State._colour_start:State._colour_end], 0.01,
       lower=0.0, higher=1.0, reflect=True)
 
   def _change_resources(self):
