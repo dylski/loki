@@ -95,6 +95,7 @@ def get_config(width=128,
 
       gui=gui,
       display=display,
+      render_method=render_method,
 
       save_frames=False,
       )
@@ -153,6 +154,7 @@ class Loki():
 
     self._config = config
     self._data = {}  # For plotting, etc.
+    self._repo_energy_stats = []
     # mean min, max; sigma min, max
     self._resources_metrics = np.zeros((4, config['num_resources']))
     self._resources_metrics[0] = np.inf
@@ -206,8 +208,8 @@ class Loki():
     keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
     keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
     state = agent_data['state']
-    state[:,State.repo_threshold] = np.random.uniform(size=state.shape[0]) * 5
-    state[:,State.repo_threshold_mut] = np.random.uniform(size=state.shape[0])
+    state[:,State.repo_threshold] = 1.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold_mut] = np.random.uniform(size=state.shape[0]) * 0.00
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
         size=(state.shape[0],3))
     return agent_data
@@ -225,6 +227,10 @@ class Loki():
       self._data['sigma_history'] = []
     self._data['sigma_history'].append(
         self._agent_data['keys'][:, :, Key.sigma].mean(axis=0))
+    if 'repo_energy_stats' not in self._data:
+      self._data['repo_energy_stats'] = []
+    self._data['repo_energy_stats'].append(np.array(self._repo_energy_stats).mean())
+    self._repo_energy_stats = []
 
   def plot_data(self):
     plt.clf()
@@ -356,7 +362,7 @@ class Loki():
           * 255).astype(np.uint8)
 
   def _bitmap_to_image(self, display_size):
-    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
+    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size, resample=Image.BILINEAR)
 
   def _display_image(self, image, display):
     bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
@@ -389,6 +395,7 @@ class Loki():
       if chance > 2:
         chance = 2
       if np.random.uniform() < chance / 2:
+        self._repo_energy_stats.append(energy)
         self._make_offspring(agent_index, neighbour_idx)
 
   def _make_offspring(self, agent_index, target_index):
@@ -526,7 +533,7 @@ def test_mutate(config):
 
 def main(config):
   loki = Loki(config)
-  render_method = render_methods[0]
+  render_method = config['render_method']
 
   pygame.init()
   plt.ion()
