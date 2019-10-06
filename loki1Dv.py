@@ -48,9 +48,10 @@ render_methods = ['flat',
   'energy_up', 'rgb_energy_up', 'irgb_energy_up',
   'energy_down', 'rgb_energy_down', 'irgb_energy_down']
 
-display_modes = ['pygame', 'console', 'headless', 'fullscreen', 'ssh_fullscreen', 'windowed',
-    'yield_frame']
+display_modes = ['pygame', 'console', 'headless', 'fullscreen',
+        'ssh_fullscreen', 'windowed', 'yield_frame']
 
+use_colour_resource = True
 
 def memoize(obj):
   cache = obj.cache = {}
@@ -72,13 +73,19 @@ def get_config(width=128,
       display='windowed'):
 
   gui = display
-  if (display == 'windowed' or display == 'fullscreen' or display == 'ssh_fullscreen'):
+  if (display == 'windowed' or display == 'fullscreen'
+          or display == 'ssh_fullscreen'):
     gui = 'pygame'
   elif display == 'headless':
     gui = 'yield_frame'
 
+  num_resources = 2
+  if use_colour_resource:
+    num_resources=3
+
   config = dict(
-      num_resources=2,
+      num_resources=num_resources,
+
       resource_mutation_level=resource_mutation,
       extraction_method = extraction_method,
 
@@ -131,26 +138,25 @@ class Loki():
       self._render_data = np.zeros((config['map_size'] + (4,)))
       self._bitmap = np.zeros((config['map_size'] + (3,)),
         dtype=np.uint8)
-    # self._resources = np.zeros(config['num_resources'])
-    # HACK FOR TESTING
-    self._resources = np.random.uniform(-3, 3,
-            size=(config['num_agents'], config['num_resources']))
-    window_len = config['map_size'][0]
+
+    if use_colour_resource:
+        self._resources = np.random.uniform(0, 1,
+                size=(config['num_agents'], config['num_resources']))
+    else:
+        self._resources = np.random.uniform(-3, 3,
+                size=(config['num_agents'], config['num_resources']))
+
+    window_len = int(config['map_size'][0]/8)
     left_off = math.ceil((window_len - 1) / 2)
     right_off = math.ceil((window_len - 2) / 2)
-    s = np.r_[self._resources[:,0][window_len-1:0:-1],
-              self._resources[:,0],
-              self._resources[:,0][-2:-window_len-1:-1]]
     w = np.ones(window_len,'d')
     # import pdb; pdb.set_trace()
-    self._resources[:,0] = np.convolve(
-            w / w.sum(), s, mode='valid')[left_off : -right_off]
-    s = np.r_[self._resources[:,1][window_len-1:0:-1],
-              self._resources[:,1],
-              self._resources[:,1][-2:-window_len-1:-1]]
-    w = np.ones(window_len,'d')
-    self._resources[:,1] = np.convolve(
-            w / w.sum(), s, mode='valid')[left_off : -right_off]
+    for i in range(config['num_resources']):
+        s = np.r_[self._resources[:,i][window_len-1:0:-1],
+                  self._resources[:,i],
+                  self._resources[:,i][-2:-window_len-1:-1]]
+        self._resources[:,i] = np.convolve(
+                w / w.sum(), s, mode='valid')[left_off : -right_off]
 
     self._config = config
     self._data = {}  # For plotting, etc.
@@ -165,8 +171,16 @@ class Loki():
 
   def render(self, render_method):
     self._render_data = np.roll(self._render_data, 1, axis=1)
-    self._agents_to_render_data()
+    row = 0
+    if use_colour_resource:
+        row = 8
+    self._agents_to_render_data(row=row)
     self._render_data_to_bitmap(method=render_method)
+
+    # self._bitmap[:,0:2,:] = (self._resources[:,0:3] * 255).astype(np.uint8)
+    self._bitmap[:,0:8,:] = np.expand_dims(
+            (self._resources[:,0:3] * 255).astype(np.uint8), axis=1)
+
     if (self._config['gui'] == 'pygame' or self._config['save_frames'] or
         self._config['gui'] == 'yield_frame'):
 
@@ -202,16 +216,24 @@ class Loki():
       )
     keys = agent_data['keys']
     # #agents, #resources
-    keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
+    # import pdb; pdb.set_trace()
+    if use_colour_resource:
+        keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
+    else:
+        keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2]) - 0.5
     # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
     keys[:,:,Key.sigma] = np.ones(keys.shape[0:2])
     keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
     keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.05
     state = agent_data['state']
     state[:,State.repo_threshold] = 1.  # np.random.uniform(size=state.shape[0]) * 5
-    state[:,State.repo_threshold_mut] = np.random.uniform(size=state.shape[0]) * 0.00
-    state[:,State._colour_start:State._colour_end] = np.random.uniform(
-        size=(state.shape[0],3))
+    state[:,State.repo_threshold_mut] = np.random.uniform(
+            size=state.shape[0]) * 0.00
+    if use_colour_resource:
+        state[:,State._colour_start:State._colour_end] = keys[:,:,Key.mean]
+    else:
+        state[:,State._colour_start:State._colour_end] = np.random.uniform(
+            size=(state.shape[0],3))
     return agent_data
 
   def _gather_data(self):
@@ -229,7 +251,8 @@ class Loki():
         self._agent_data['keys'][:, :, Key.sigma].mean(axis=0))
     if 'repo_energy_stats' not in self._data:
       self._data['repo_energy_stats'] = []
-    self._data['repo_energy_stats'].append(np.array(self._repo_energy_stats).mean())
+    self._data['repo_energy_stats'].append(np.array(
+        self._repo_energy_stats).mean())
     self._repo_energy_stats = []
 
   def plot_data(self):
@@ -405,10 +428,22 @@ class Loki():
     self._agent_data['state'][target_index, :] = self._agent_data[
             'state'][agent_index, :]
     self._mutate_agent(target_index)
+    if use_colour_resource:
+        # Overwrite any colour mutation with key values.
+        self._agent_data['state'][
+                target_index,
+                State._colour_start:State._colour_end] = self._agent_data[
+                        'keys'][target_index,:,Key.mean]
 
   def _mutate_agent(self, target_index):
+    lower = None
+    higher = None
+    if use_colour_resource:
+        lower = 0.0
+        higher = 1.0
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean],
-        self._agent_data['keys'][target_index, :, Key.mean_mut])
+        self._agent_data['keys'][target_index, :, Key.mean_mut],
+        lower=lower, higher=higher)
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
         0.001, lower=0.0, higher=1.0, reflect=True)
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
@@ -418,7 +453,7 @@ class Loki():
     self._agent_data['state'][
             target_index, State.repo_threshold] = mutate_value(
                     self._agent_data['state'][target_index, State.repo_threshold],
-                    self._agent_data['state'][target_index, 
+                    self._agent_data['state'][target_index,
                         State.repo_threshold_mut],
                     lower=0.0)
     mutate_array(self._agent_data['state'][
