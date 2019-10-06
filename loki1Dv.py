@@ -114,7 +114,6 @@ def get_config(width=128,
 
 class Loki():
   def __init__(self, config):
-    print(config)
     self._time = 0
     if config['gui'] == 'pygame':
       if config['display'] == 'fullscreen':
@@ -167,7 +166,7 @@ class Loki():
     self._resources_metrics[1] = -np.inf
     self._resources_metrics[2] = np.inf
     self._resources_metrics[3] = -np.inf
-    print('Resources: ', self._resources)
+    # print('Resources: ', self._resources)
 
   def render(self, render_method):
     self._render_data = np.roll(self._render_data, 1, axis=1)
