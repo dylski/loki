@@ -70,7 +70,7 @@ def get_config(width=128,
       num_1d_history=48,
       render_method='flat',
       extraction_method='mean',
-      resource_mutation=0.00,
+      resource_mutation=0.0001,
       display='windowed'):
 
   gui = display
@@ -428,6 +428,7 @@ class Loki():
   def _bitmap_to_image(self, display_size):
     return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
             display_size, resample=Image.BILINEAR)
+    # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
 
   def _display_image(self, image, display):
     bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
@@ -687,13 +688,13 @@ if __name__ == '__main__':
   ap.add_argument("-x", "--width", help="Cells wide", default=128)
   ap.add_argument("-y", "--height", help="Cells high (only 2D)", default=None)
   ap.add_argument("-g", "--gen_history", help="Size of history (for 1D)",
-          default=48)
+          default=480)
   ap.add_argument("-r", "--render_method", help="Render methods [{}]".format(
     render_methods), default=render_methods[0])
   ap.add_argument("-e", "--extraction", help="Extraction method [mean|max]",
-    default='max')
+    default='mean')
   ap.add_argument("-n", "--resource_mutation", help="Resrouce mutation level",
-    default=0.)
+    default=0.0001)
   ap.add_argument("-d", "--display",
       help="Display mode [{}]".format(display_modes), default=display_modes[0])
   args = vars(ap.parse_args())
