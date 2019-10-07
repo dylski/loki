@@ -71,6 +71,7 @@ def get_config(width=128,
       render_method='flat',
       extraction_method='mean',
       resource_mutation=0.0001,
+      show_resource=False,
       display='windowed'):
 
   gui = display
@@ -102,6 +103,7 @@ def get_config(width=128,
       gui=gui,
       display=display,
       render_method=render_method,
+      show_resource=show_resource,
 
       save_frames=False,
       )
@@ -141,7 +143,7 @@ class Loki():
     self._resources = np.random.uniform(0, 1,
             size=(config['num_agents'], config['num_resources']))
 
-    window_len = int(config['map_size'][0]/16)
+    window_len = int(config['map_size'][0]/4)
     left_off = math.ceil((window_len - 1) / 2)
     right_off = math.ceil((window_len - 2) / 2)
     w = np.ones(window_len,'d')
@@ -152,8 +154,9 @@ class Loki():
                   self._resources[:,i][-2:-window_len-1:-1]]
         self._resources[:,i] = np.convolve(
                 w / w.sum(), s, mode='valid')[left_off : -right_off]
-    # self._resources[0:64,:] = 0
-    # self._resources[64:,:] = 1
+    half = int(self._resources.shape[0] / 2)
+    # self._resources[0:half,:] = 0
+    # self._resources[half:,:] = 1
     self._config = config
     self._data = {}  # For plotting, etc.
     self._repo_energy_stats = []
@@ -174,13 +177,13 @@ class Loki():
     self._render_data = np.roll(self._render_data, 1, axis=1)
 
     row_offset  = 0
-    if config['world_d'] == 1:  #  and show_resource:
+    if self._config['world_d'] == 1:  #  and show_resource:
         row_offset = math.ceil(self._config['num_1d_history'] * 0.02)
 
     self._agents_to_render_data(row=row_offset)
     self._render_data_to_bitmap(method=render_method)
 
-    if config['world_d'] == 1:
+    if self._config['world_d'] == 1:
       if show_resource:
         self._bitmap[:,0:row_offset,:] = np.expand_dims(
                 (self._resources[:,0:3] * 255).astype(np.uint8), axis=1)
@@ -203,7 +206,7 @@ class Loki():
 
   def step_frame(self, render_method):
     self.step()
-    return self.render(render_method)
+    return self.render(render_method, self._config['show_resource'])
 
   def step(self):
     self._change_resources()
@@ -232,7 +235,7 @@ class Loki():
     # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     state = agent_data['state']
-    state[:,State.repo_threshold] = 10.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold] = 1.  # np.random.uniform(size=state.shape[0]) * 5
     state[:,State.repo_threshold_mut] = np.random.uniform(
             size=state.shape[0]) * 0.00
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
@@ -426,9 +429,9 @@ class Loki():
           * 255).astype(np.uint8)
 
   def _bitmap_to_image(self, display_size):
-    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
-            display_size, resample=Image.BILINEAR)
-    # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
+    # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
+    #         display_size, resample=Image.BILINEAR)
+    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
 
   def _display_image(self, image, display):
     bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
@@ -643,7 +646,7 @@ def main(config):
 
   pygame.init()
   plt.ion()
-  show_resource = False
+  show_resource = config['show_resource']
 
   stop = False
   while True:
@@ -685,44 +688,48 @@ if __name__ == '__main__':
   import argparse
 
   ap = argparse.ArgumentParser()
-  ap.add_argument("-x", "--width", help="Cells wide", default=128)
-  ap.add_argument("-y", "--height", help="Cells high (only 2D)", default=None)
-  ap.add_argument("-g", "--gen_history", help="Size of history (for 1D)",
+  ap.add_argument('-x', '--width', help='Cells wide', default=128)
+  ap.add_argument('-y', '--height', help='Cells high (only 2D)', default=None)
+  ap.add_argument('-g', '--gen_history', help='Size of history (for 1D)',
           default=480)
-  ap.add_argument("-r", "--render_method", help="Render methods [{}]".format(
+  ap.add_argument('-r', '--render_method', help='Render methods [{}]'.format(
     render_methods), default=render_methods[0])
-  ap.add_argument("-e", "--extraction", help="Extraction method [mean|max]",
+  ap.add_argument('-e', '--extraction', help='Extraction method [mean|max]',
     default='mean')
-  ap.add_argument("-n", "--resource_mutation", help="Resrouce mutation level",
+  ap.add_argument('-n', '--resource_mutation', help='Resrouce mutation level',
     default=0.0001)
-  ap.add_argument("-d", "--display",
-      help="Display mode [{}]".format(display_modes), default=display_modes[0])
+  ap.add_argument('-d', '--display',
+      help='Display mode [{}]'.format(display_modes), default=display_modes[0])
+  ap.add_argument('-s', '--show_res', action='store_true', help='Show resource')
   args = vars(ap.parse_args())
-  # ap.add_argument("-t", "--testing", help="test_mutateex",
+  # ap.add_argument('-t', '--testing', help='test_mutateex',
   #     action='store_true')
 
 
-  width = int(args.get("width"))
-  height = None if args.get("height") is None else int(args.get("height"))
-  gen_history = int(args.get("gen_history"))
-  render_method = args.get("render_method")
-  extraction = args.get("extraction")
-  resource_mutation = float(args.get("resource_mutation"))
-  display = args.get("display")
+  width = int(args.get('width'))
+  height = None if args.get('height') is None else int(args.get('height'))
+  gen_history = int(args.get('gen_history'))
+  render_method = args.get('render_method')
+  extraction = args.get('extraction')
+  resource_mutation = float(args.get('resource_mutation'))
+  display = args.get('display')
+  show_resource = args.get('show_res', False)
+
   testing = False
-  # testing = args.get("testing")
+  # testing = args.get('testing')
 
   config = get_config(width=width,
       height=height,
       num_1d_history=gen_history,
       render_method=render_method,
+      show_resource=show_resource,
       extraction_method=extraction,
       resource_mutation=resource_mutation,
       display=display)
 
   print(config)
   # ap = argparse.ArgumentParser()
-  # ap.add_argument("-m", "--test_mutate", help="test_mutateex",
+  # ap.add_argument('-m', '--test_mutate', help='test_mutateex',
   #     action='store_true')
   # args = vars(ap.parse_args())
   if testing:
