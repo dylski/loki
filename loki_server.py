@@ -10,14 +10,15 @@ def index():
 def gen(loki):
     """Video streaming generator function."""
     while True:
+        # frame = loki.step_frame(render_method='rgb_energy_up')
         frame = loki.step_frame(render_method='keys_energy_up')
         yield (b'--frame\r\n'
                b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
 @app.route('/video_feed')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
-    config = loki.get_config(show_resource=True, render_method='res_energy_up',
-            width=64, num_1d_history=48, display='headless')
+    config = loki.get_config(show_resource=True,
+            extraction_method='mean', width=128, num_1d_history=240, display='headless')
     # config['gui'] = 'yield_frame'
     return Response(gen(loki.Loki(config)),
                     mimetype='multipart/x-mixed-replace; boundary=frame')

@@ -235,7 +235,7 @@ class Loki():
     # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     state = agent_data['state']
-    state[:,State.repo_threshold] = 1.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold] = 3.  # np.random.uniform(size=state.shape[0]) * 5
     state[:,State.repo_threshold_mut] = np.random.uniform(
             size=state.shape[0]) * 0.00
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
@@ -430,7 +430,7 @@ class Loki():
 
   def _bitmap_to_image(self, display_size):
     # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
-    #         display_size, resample=Image.BILINEAR)
+    #         display_size, resample=Image.LANCZOS)
     return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
 
   def _display_image(self, image, display):
@@ -509,10 +509,10 @@ class Loki():
             'resource_mutation_level']
 
     intensity = 0.1
-    roughness = 16
+    roughness = 4
     if force:
       intesity = 1.0
-      roughness = 33
+      roughness = 4
     window_len = int(self._config['map_size'][0]/roughness)
     left_off = math.ceil((window_len - 1) / 2)
     right_off = math.ceil((window_len - 2) / 2)
