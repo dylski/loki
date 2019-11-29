@@ -235,7 +235,7 @@ class Loki():
     # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     state = agent_data['state']
-    state[:,State.repo_threshold] = 3.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold] = 10.  # np.random.uniform(size=state.shape[0]) * 5
     state[:,State.repo_threshold_mut] = np.random.uniform(
             size=state.shape[0]) * 0.00
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
