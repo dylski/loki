@@ -159,6 +159,7 @@ class Loki():
     # self._resources[half:,:] = 1
     self._config = config
     self._data = {}  # For plotting, etc.
+    self._data_history_len = self._render_data.shape[1];
     self._repo_energy_stats = []
     # mean min, max; sigma min, max
     self._resources_metrics = np.zeros((4, config['num_resources']))
@@ -260,6 +261,11 @@ class Loki():
     self._data['repo_energy_stats'].append(np.array(
         self._repo_energy_stats).mean())
     self._repo_energy_stats = []
+    for _, data_list in self._data.items():
+      if len(data_list) > self._data_history_len:
+        data_list.pop(0)
+
+
 
   def plot_data(self):
     plt.clf()
