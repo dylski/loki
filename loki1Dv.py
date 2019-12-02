@@ -43,10 +43,8 @@ class State(IntEnum):
   colour_mut = 7
   _num = 8
 
-
-render_methods = ['flat',
-  'energy_up', 'rgb_energy_up', 'irgb_energy_up', 'keys_energy_up',
-  'energy_down', 'rgb_energy_down', 'irgb_energy_down', 'keys_energy_down']
+render_colouring = ['rgb', 'irgb', 'keys','none']
+render_texturing = ['flat', 'energy_up', 'energy_down']
 
 display_modes = ['pygame', 'console', 'headless', 'fullscreen',
         'ssh_fullscreen', 'windowed', 'yield_frame']
@@ -68,7 +66,8 @@ def memoize(obj):
 def get_config(width=128,
       height=None,
       num_1d_history=48,
-      render_method='flat',
+      render_colour='rgb',
+      render_texture='flat',
       extraction_method='mean',
       resource_mutation=0.0001,
       show_resource=False,
@@ -102,7 +101,8 @@ def get_config(width=128,
 
       gui=gui,
       display=display,
-      render_method=render_method,
+      render_colour=render_colour,
+      render_texture=render_texture,
       show_resource=show_resource,
 
       save_frames=False,
@@ -173,7 +173,16 @@ class Loki():
       raise ValueError('{} not in config'.format(key))
     self._config[key] = value
 
-  def render(self, render_method, show_resource=False):
+  def set_render_resource(self, render_resource):
+    self._config['show_resource'] = render_resource
+
+  def set_render_colour(self, render_colour):
+    self._config['render_colour'] = render_colour
+
+  def set_render_texture(self, render_texture):
+    self._config['render_texture'] = render_texture
+
+  def render(self):
     self._render_data = np.roll(self._render_data, 1, axis=1)
 
     row_offset  = 0
@@ -181,10 +190,12 @@ class Loki():
         row_offset = math.ceil(self._config['num_1d_history'] * 0.02)
 
     self._agents_to_render_data(row=row_offset)
-    self._render_data_to_bitmap(method=render_method)
+    self._render_data_to_bitmap(
+        render_colour=self._config['render_colour'], 
+        render_texture=self._config['render_texture'])
 
     if self._config['world_d'] == 1:
-      if show_resource:
+      if self._config['show_resource']:
         self._bitmap[:,0:row_offset,:] = np.expand_dims(
                 (self._resources[:,0:3] * 255).astype(np.uint8), axis=1)
       else:
@@ -204,9 +215,9 @@ class Loki():
         image.save(imgByteArr, format='PNG')
         return imgByteArr.getvalue()
 
-  def step_frame(self, render_method):
+  def step_frame(self):
     self.step()
-    return self.render(render_method, self._config['show_resource'])
+    return self.render()
 
   def step(self):
     self._change_resources()
@@ -367,7 +378,29 @@ class Loki():
       # new_render_data is 2D, i.e. data for the whole render_data map.
       self._render_data[:] = new_render_data.reshape(self._render_data.shape)
 
-  def _render_data_to_bitmap(self, method='flat'):
+  def _render_data_to_bitmap(self, render_colour='rgb', render_texture='flat'):
+    energy = self._render_data[:,:,3]
+    if render_texture == 'energy_up':
+      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+    elif render_texture == 'energy_down':
+      normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
+    else:
+      normed_energy = np.ones_like(energy)
+
+    # RGB
+    colour = self._render_data[:,:,0:3]
+    if render_colour == 'irgb':
+      colour = (1 - colour)
+    elif render_colour == 'none':
+      colour = np.ones_like(colour)
+    elif render_colour == 'keys':
+      colour = self._render_data[:,:,4:7]
+
+    self._bitmap[:] = (colour * normed_energy[:, :, np.newaxis] * 255
+        ).astype(np.uint8)
+
+
+  def _render_data_to_bitmap_old(self, method='flat'):
     if method == 'flat':
       # Just RGB
       self._bitmap[:] = (self._render_data[:,:,0:3] * 255).astype(np.uint8)
@@ -611,7 +644,8 @@ def mutate_value(val, level, lower=None, higher=None, dist='normal'):
 
 def test_mutate(config):
   loki = Loki(config)
-  render_method = render_methods[0]
+  render_colour = render_colouring[0]
+  render_texture = render_texturing[0]
   pygame.init()
   plt.ion()
   stop = False
@@ -625,10 +659,6 @@ def test_mutate(config):
           if event.key == pygame.K_ESCAPE:
             stop = True
             break
-          if event.key == pygame.K_r:
-            render_method = render_methods[
-                (render_methods.index(render_method) + 1)
-                % len(render_methods)]
           if event.key == pygame.K_p:
             loki.plot_data()
     if stop:
@@ -636,13 +666,14 @@ def test_mutate(config):
 
     for i in range(loki._config['num_agents']):
       loki._mutate_agent(i)
-    image = loki.render(render_method)
+    image = loki.render()
 
 
 
 def main(config):
   loki = Loki(config)
-  render_method = config['render_method']
+  render_colour = config['render_colour']
+  render_texture = config['render_texture']
 
   pygame.init()
   plt.ion()
@@ -659,11 +690,6 @@ def main(config):
           if event.key == pygame.K_ESCAPE:
             stop = True
             break
-          if event.key == pygame.K_r:
-            render_method = render_methods[
-                (render_methods.index(render_method) + 1)
-                % len(render_methods)]
-            print('Render method {}'.format(render_method))
           if event.key == pygame.K_p:
             loki.plot_data()
           if event.key == pygame.K_e:
@@ -674,14 +700,27 @@ def main(config):
             print('Extraction method: {}'.format(config['extraction_method']))
           if event.key == pygame.K_s:
             show_resource = not show_resource
+            loki.set_render_resource(show_resource)
             print('Show keys: {}'.format(show_resource))
           if event.key == pygame.K_x:
             loki._change_resources(force=True)
+          if event.key == pygame.K_c:
+            render_colour = render_colouring[
+                (render_colouring.index(render_colour) + 1)
+                % len(render_colouring)]
+            loki.set_render_colour(render_colour)
+            print('Render method {}{}'.format(render_colour, render_texture))
+          if event.key == pygame.K_t:
+            render_texture = render_texturing[
+                (render_texturing.index(render_texture) + 1)
+                % len(render_texturing)]
+            loki.set_render_texture(render_texture)
+            print('Render method {} {}'.format(render_colour, render_texture))
     if stop:
       break
 
     loki.step()
-    image = loki.render(render_method, show_resource)
+    image = loki.render()
 
 
 if __name__ == '__main__':
@@ -692,8 +731,10 @@ if __name__ == '__main__':
   ap.add_argument('-y', '--height', help='Cells high (only 2D)', default=None)
   ap.add_argument('-g', '--gen_history', help='Size of history (for 1D)',
           default=480)
-  ap.add_argument('-r', '--render_method', help='Render methods [{}]'.format(
-    render_methods), default=render_methods[0])
+  ap.add_argument('-c', '--render_colour', help='Render colouring [{}]'.format(
+    render_colouring), default=render_colouring[0])
+  ap.add_argument('-t', '--render_texture', help='Render texture [{}]'.format(
+    render_texturing), default=render_texturing[0])
   ap.add_argument('-e', '--extraction', help='Extraction method [mean|max]',
     default='mean')
   ap.add_argument('-n', '--resource_mutation', help='Resrouce mutation level',
@@ -709,7 +750,8 @@ if __name__ == '__main__':
   width = int(args.get('width'))
   height = None if args.get('height') is None else int(args.get('height'))
   gen_history = int(args.get('gen_history'))
-  render_method = args.get('render_method')
+  render_colour = args.get('render_colour')
+  render_texture = args.get('render_texture')
   extraction = args.get('extraction')
   resource_mutation = float(args.get('resource_mutation'))
   display = args.get('display')
@@ -721,7 +763,8 @@ if __name__ == '__main__':
   config = get_config(width=width,
       height=height,
       num_1d_history=gen_history,
-      render_method=render_method,
+      render_colour=render_colour,
+      render_texture=render_texture,
       show_resource=show_resource,
       extraction_method=extraction,
       resource_mutation=resource_mutation,
