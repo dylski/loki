@@ -401,6 +401,8 @@ class Loki():
       colour = np.ones_like(colour)
     elif render_colour == 'keys':
       colour = self._render_data[:,:,4:7]
+    if (colour > 1.0).any():
+      print('WARNING colour max {}'.format(colour.max()))
 
     self._bitmap[:] = (colour * normed_energy[:, :, np.newaxis] * 255
         ).astype(np.uint8)
