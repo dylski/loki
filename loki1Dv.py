@@ -142,6 +142,9 @@ class Loki():
 
     self._resources = np.random.uniform(0, 1,
             size=(config['num_agents'], config['num_resources']))
+    self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
+    self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
+    self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
 
     window_len = int(config['map_size'][0]/4)
     left_off = math.ceil((window_len - 1) / 2)
@@ -192,7 +195,7 @@ class Loki():
 
     self._agents_to_render_data(row=row_offset)
     self._render_data_to_bitmap(
-        render_colour=self._config['render_colour'], 
+        render_colour=self._config['render_colour'],
         render_texture=self._config['render_texture'])
 
     if self._config['world_d'] == 1:
@@ -275,8 +278,6 @@ class Loki():
     for _, data_list in self._data.items():
       if len(data_list) > self._data_history_len:
         data_list.pop(0)
-
-
 
   def plot_data(self):
     plt.clf()
@@ -392,6 +393,10 @@ class Loki():
       normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
     else:
       normed_energy = np.ones_like(energy)
+    if (normed_energy > 1.0).any():
+      print('WARNING normed_energy max {}'.format(normed_energy.max()))
+    if (normed_energy < 0.0).any():
+      print('WARNING normed_energy min {}'.format(normed_energy.min()))
 
     # RGB
     colour = self._render_data[:,:,0:3]
@@ -403,10 +408,11 @@ class Loki():
       colour = self._render_data[:,:,4:7]
     if (colour > 1.0).any():
       print('WARNING colour max {}'.format(colour.max()))
+    if (colour < 0.0).any():
+      print('WARNING colour min {}'.format(colour.min()))
 
     self._bitmap[:] = (colour * normed_energy[:, :, np.newaxis] * 255
         ).astype(np.uint8)
-
 
   def _render_data_to_bitmap_old(self, method='flat'):
     if method == 'flat':
@@ -522,17 +528,22 @@ class Loki():
     # Now resources are expected to be 0 <= x <= 1
     lower = 0.0
     higher = 1.0
+
+    check_array(self._agent_data['keys'][target_index, :, Key.mean])
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean],
         self._agent_data['keys'][target_index, :, Key.mean_mut],
-        lower=lower, higher=higher, reflect=False, dist='cauchy')
+        lower=lower, higher=higher, reflect=True, dist='cauchy')
+    check_array(self._agent_data['keys'][target_index, :, Key.mean])
+
+
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
         self._agent_data['keys'][target_index, :, Key.sigma_mut], lower=0.1,
         dist='cauchy')
     # Turn off mutation of mutation rates
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
-        0.0001, lower=0.0, higher=1.0, reflect=False, dist='cauchy')
+        0.0001, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
-        0.0001, lower=0.0, higher=1.0, reflect=False, dist='cauchy')
+        0.0001, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     self._agent_data['state'][
             target_index, State.repo_threshold] = mutate_value(
                     self._agent_data['state'][target_index,
@@ -558,7 +569,6 @@ class Loki():
     left_off = math.ceil((window_len - 1) / 2)
     right_off = math.ceil((window_len - 2) / 2)
     w = np.ones(window_len,'d')
-
 
     for i in range(self._resources.shape[1]):
       if np.random.uniform() < resource_mutability[i] or force:
@@ -630,14 +640,14 @@ def mutate_array(arr, level, lower=None, higher=None, reflect=False,
   if lower is not None:
    if reflect:
      arr[arr < lower] = 2 * lower - arr[arr < lower]
-   else:
-    arr[arr < lower] = lower
   if higher is not None:
    if reflect:
      arr[arr > higher] = 2 * higher - arr[arr > higher]
-   else:
-    arr[arr > higher] = higher
 
+  if lower is not None:
+    arr[arr < lower] = lower
+  if higher is not None:
+    arr[arr > higher] = higher
 
 def mutate_value(val, level, lower=None, higher=None, dist='normal'):
   if dist == 'cauchy':
@@ -675,6 +685,12 @@ def test_mutate(config):
     for i in range(loki._config['num_agents']):
       loki._mutate_agent(i)
     image = loki.render()
+
+def check_array(arr, lower=0., higher=1.):
+  if (arr > 1.0).any():
+    print('WARNING max {}'.format(arr.max()))
+  if (arr < 0.0).any():
+    print('WARNING min {}'.format(arr.min()))
 
 
 
@@ -717,7 +733,7 @@ def main(config):
                 (render_colouring.index(render_colour) + 1)
                 % len(render_colouring)]
             loki.set_render_colour(render_colour)
-            print('Render method {}{}'.format(render_colour, render_texture))
+            print('Render method {} {}'.format(render_colour, render_texture))
           if event.key == pygame.K_t:
             render_texture = render_texturing[
                 (render_texturing.index(render_texture) + 1)
