@@ -22,16 +22,16 @@ import argparse
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
 class Key(IntEnum):
-  mean = 0
+  mean = 0  # key per resource
   sigma = 1
   mean_mut = 2
   sigma_mut = 3
-  energy = 4
+  energy = 4  # energy per key
   _num = 5
 
 
 class State(IntEnum):
-  energy = 0
+  energy = 0  # agent's energy
   age = 1
   repo_threshold = 2
   repo_threshold_mut = 3
@@ -85,6 +85,7 @@ def get_config(width=128,
   config = dict(
       num_resources=num_resources,
 
+      snooth_resources=True,
       resource_mutation_level=resource_mutation,
       extraction_method = extraction_method,
 
@@ -140,26 +141,32 @@ class Loki():
       self._bitmap = np.zeros((config['map_size'] + (3,)),
         dtype=np.uint8)
 
-    self._resources = np.random.uniform(0, 1,
-            size=(config['num_agents'], config['num_resources']))
-    self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
-    self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
-    self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
+    # self._resources = np.random.uniform(0, 1,
+    #         size=(config['num_agents'], config['num_resources']))
 
-    window_len = int(config['map_size'][0]/4)
-    left_off = math.ceil((window_len - 1) / 2)
-    right_off = math.ceil((window_len - 2) / 2)
-    w = np.ones(window_len,'d')
-    # import pdb; pdb.set_trace()
-    for i in range(config['num_resources']):
-        s = np.r_[self._resources[:,i][window_len-1:0:-1],
-                  self._resources[:,i],
-                  self._resources[:,i][-2:-window_len-1:-1]]
-        self._resources[:,i] = np.convolve(
-                w / w.sum(), s, mode='valid')[left_off : -right_off]
-    half = int(self._resources.shape[0] / 2)
+    if 'smooth_resources' in config and config['smooth_resources']:
+      window_len = int(config['map_size'][0]/4)
+      left_off = math.ceil((window_len - 1) / 2)
+      right_off = math.ceil((window_len - 2) / 2)
+      w = np.ones(window_len,'d')
+      for i in range(config['num_resources']):
+          s = np.r_[self._resources[:,i][window_len-1:0:-1],
+                    self._resources[:,i],
+                    self._resources[:,i][-2:-window_len-1:-1]]
+          self._resources[:,i] = np.convolve(
+                  w / w.sum(), s, mode='valid')[left_off : -right_off]
+
+    # --- TESTING STUFF
+    self._resources = np.ones((config['num_agents'], config['num_resources']))
+    # self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
+    # self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
+    # self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
+
+    # half = int(self._resources.shape[0] / 2)
     # self._resources[0:half,:] = 0
     # self._resources[half:,:] = 1
+    # --- TESTING STUFF
+
     self._config = config
     self._data = {}  # For plotting, etc.
     self._data_history_len = self._render_data.shape[1];
