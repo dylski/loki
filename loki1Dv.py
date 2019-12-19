@@ -158,9 +158,9 @@ class Loki():
 
     # --- TESTING STUFF
     self._resources = np.ones((config['num_agents'], config['num_resources']))
-    # self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
-    # self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
-    # self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
+    self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
+    self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
+    self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
 
     # half = int(self._resources.shape[0] / 2)
     # self._resources[0:half,:] = 0
@@ -178,6 +178,33 @@ class Loki():
     self._resources_metrics[2] = np.inf
     self._resources_metrics[3] = -np.inf
     # print('Resources: ', self._resources)
+
+  def _init_agents(self, config):
+    """Creates dict with all agents' key and state data."""
+
+    agent_data = dict(
+      keys = np.zeros((config['num_agents'], config['num_resources'],
+        int(Key._num))),
+      state = np.zeros((config['num_agents'], int(State._num)))
+      )
+    keys = agent_data['keys']
+    # #agents, #resources
+    # import pdb; pdb.set_trace()
+    keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
+    # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
+    keys[:,:,Key.sigma] = np.ones(keys.shape[0:2]) * 0.01
+    # Try same initial mutability
+    keys[:,:,Key.mean_mut] = 0.001
+    keys[:,:,Key.sigma_mut] = 0.000
+    # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
+    # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
+    state = agent_data['state']
+    state[:,State.repo_threshold] = 5.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold_mut] = np.random.uniform(
+            size=state.shape[0]) * 0.00
+    state[:,State._colour_start:State._colour_end] = np.random.uniform(
+        size=(state.shape[0],3))
+    return agent_data
 
   def set_config(self, key, value):
     if key not in self._config:
@@ -236,33 +263,6 @@ class Loki():
     self._replication(self._config['map_size'])
     self._gather_data()
     self._time += 1
-
-  def _init_agents(self, config):
-    """Creates dict with all agents' key and state data."""
-
-    agent_data = dict(
-      keys = np.zeros((config['num_agents'], config['num_resources'],
-        int(Key._num))),
-      state = np.zeros((config['num_agents'], int(State._num)))
-      )
-    keys = agent_data['keys']
-    # #agents, #resources
-    # import pdb; pdb.set_trace()
-    keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
-    # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
-    keys[:,:,Key.sigma] = np.ones(keys.shape[0:2]) * 0.2
-    # Try same initial mutability
-    keys[:,:,Key.mean_mut] = 0.002
-    keys[:,:,Key.sigma_mut] = 0.002
-    # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
-    # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
-    state = agent_data['state']
-    state[:,State.repo_threshold] = 10.  # np.random.uniform(size=state.shape[0]) * 5
-    state[:,State.repo_threshold_mut] = np.random.uniform(
-            size=state.shape[0]) * 0.00
-    state[:,State._colour_start:State._colour_end] = np.random.uniform(
-        size=(state.shape[0],3))
-    return agent_data
 
   def _gather_data(self):
     if 'energy_history' not in self._data:
@@ -421,67 +421,6 @@ class Loki():
     self._bitmap[:] = (colour * normed_energy[:, :, np.newaxis] * 255
         ).astype(np.uint8)
 
-  def _render_data_to_bitmap_old(self, method='flat'):
-    if method == 'flat':
-      # Just RGB
-      self._bitmap[:] = (self._render_data[:,:,0:3] * 255).astype(np.uint8)
-    elif method == 'energy_up':
-      # Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (np.ones_like(self._render_data[:,:,0:3])
-          * normed_energy[:, :, np.newaxis]
-          * 255).astype(np.uint8)
-    elif method == 'rgb_energy_up':
-      # Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (self._render_data[:,:,0:3]
-              * normed_energy[:, :, np.newaxis]
-              * 255).astype(np.uint8)
-    elif method == 'keys_energy_up':
-      # First three key values, scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (self._render_data[:,:,4:7]
-              * normed_energy[:, :, np.newaxis]
-              * 255).astype(np.uint8)
-    elif method == 'irgb_energy_up':
-      # Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = ((1. - self._render_data[:,:,0:3]
-          * normed_energy[:, :, np.newaxis])
-          * 255).astype(np.uint8)
-    elif method == 'energy_down':
-      # Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (np.ones_like(self._render_data[:,:,0:3])
-          * normed_energy[:, :, np.newaxis]
-          * 255).astype(np.uint8)
-    elif method == 'rgb_energy_down':
-      # Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (self._render_data[:,:,0:3]
-              * normed_energy[:, :, np.newaxis]
-              * 255).astype(np.uint8)
-    elif method == 'keys_energy_down':
-      # First three key values Scaled min->max
-      energy = self._render_data[:,:,3]
-      normed_energy = 1. - (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = (self._render_data[:,:,4:7]
-              * normed_energy[:, :, np.newaxis]
-              * 255).astype(np.uint8)
-    elif method == 'irgb_energy_down':
-      # Scaled 0->max
-      energy = self._render_data[:,:,3]
-      normed_energy = (energy - np.min(energy)) / (np.ptp(energy) + 0.0001)
-      self._bitmap[:] = ((1 - self._render_data[:,:,0:3]
-          * normed_energy[:, :, np.newaxis])
-          * 255).astype(np.uint8)
-
   def _bitmap_to_image(self, display_size):
     # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
     #         display_size, resample=Image.LANCZOS)
@@ -542,15 +481,14 @@ class Loki():
         lower=lower, higher=higher, reflect=True, dist='cauchy')
     check_array(self._agent_data['keys'][target_index, :, Key.mean])
 
-
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma],
         self._agent_data['keys'][target_index, :, Key.sigma_mut], lower=0.1,
         dist='cauchy')
     # Turn off mutation of mutation rates
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
-        0.0001, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
+        0.000, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
-        0.0001, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
+        0.000, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     self._agent_data['state'][
             target_index, State.repo_threshold] = mutate_value(
                     self._agent_data['state'][target_index,

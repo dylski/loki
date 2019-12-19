@@ -18,6 +18,32 @@ class TestLoki(unittest.TestCase):
     self.assertTrue(data.max() <= 1.)
     self.assertTrue(data.min() >= 0.)
 
+  def test_key_mutate(self):
+    num_agents = 2
+    config = dict(
+        gui = None,
+        world_d = 1,
+        map_size = (num_agents,),
+        num_1d_history = 1,
+        num_agents = num_agents,
+        num_resources = 1,
+        )
+    loki = Loki(config)
+
+    keys0 = loki._agent_data['keys'][0, :, Key.mean].copy()
+    keys1 = loki._agent_data['keys'][1, :, Key.mean].copy()
+    loki._agent_data['keys'][:,:,Key.mean_mut] = 0.
+    loki._mutate_agent(0)
+    self.assertTrue((keys0 == loki._agent_data['keys'][0, :, Key.mean]).all())
+    self.assertTrue((keys1 == loki._agent_data['keys'][1, :, Key.mean]).all())
+
+    keys0 = loki._agent_data['keys'][0, :, Key.mean].copy()
+    keys1 = loki._agent_data['keys'][1, :, Key.mean].copy()
+    loki._agent_data['keys'][:,:,Key.mean_mut] = 0.1
+    loki._mutate_agent(0)
+    self.assertTrue((keys0 != loki._agent_data['keys'][0, :, Key.mean]).all())
+    self.assertTrue((keys1 == loki._agent_data['keys'][1, :, Key.mean]).all())
+
   def test_key_init(self):
     num_agents = 1
     config = dict(
@@ -52,7 +78,6 @@ class TestLoki(unittest.TestCase):
     loki._agent_data['keys'][:, :, Key.mean] = 0.4
     loki._agent_data['keys'][:,:,Key.energy] = 0
     loki._extract_energy()
-    print(loki._agent_data['keys'][:,:,Key.energy])
     self.assertIsNone(
         np.testing.assert_almost_equal(
           loki._agent_data['keys'][:,:,Key.energy],
