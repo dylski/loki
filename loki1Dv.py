@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import buttons
 import wxdisplay
 import colorsys
 from enum import IntEnum
@@ -648,45 +649,58 @@ def main(config):
   plt.ion()
   show_resource = config['show_resource']
 
-  stop = False
+  button_todo = ['render_colour', 'render_texture', 
+      'extraction_method', 'show_resource',
+      'stop', 'no_press']
+
   while True:
+    todo = button_todo[buttons.last_button_release()]
     if config['gui'] == 'pygame':
       for event in pygame.event.get():
         if event.type == pygame.QUIT:
-          stop = True
-          break
+          todo = 'stop'
         elif event.type == pygame.KEYDOWN:
           if event.key == pygame.K_ESCAPE:
-            stop = True
-            break
+            todo = 'stop'
           if event.key == pygame.K_p:
             loki.plot_data()
           if event.key == pygame.K_e:
-            loki.set_config('extraction_method', extraction_methods[
-                    (extraction_methods.index(
-                        config['extraction_method']) + 1)
-                    % len(extraction_methods)])
-            print('Extraction method: {}'.format(config['extraction_method']))
+            todo = 'extraction_method'
           if event.key == pygame.K_s:
-            show_resource = not show_resource
-            loki.set_render_resource(show_resource)
-            print('Show keys: {}'.format(show_resource))
+            todo = 'show_resource'
           if event.key == pygame.K_x:
-            loki._change_resources(force=True)
+            todo = 'change_resources'
           if event.key == pygame.K_c:
-            render_colour = render_colouring[
-                (render_colouring.index(render_colour) + 1)
-                % len(render_colouring)]
-            loki.set_render_colour(render_colour)
-            print('Render method {} {}'.format(render_colour, render_texture))
+            todo = 'render_colour'
           if event.key == pygame.K_t:
-            render_texture = render_texturing[
-                (render_texturing.index(render_texture) + 1)
-                % len(render_texturing)]
-            loki.set_render_texture(render_texture)
-            print('Render method {} {}'.format(render_colour, render_texture))
-    if stop:
+            todo = 'render_texture'
+
+    if todo == 'stop':
       break
+
+    if todo == 'extraction_method':
+      loki.set_config('extraction_method', extraction_methods[
+        (extraction_methods.index(
+          config['extraction_method']) + 1) % len(extraction_methods)])
+      print('Extraction method: {}'.format(config['extraction_method']))
+    if todo == 'show_resource':
+      show_resource = not show_resource
+      loki.set_render_resource(show_resource)
+      print('Show keys: {}'.format(show_resource))
+    if todo == 'change_resources':
+      loki._change_resources(force=True)
+    if todo == 'render_colour':
+      render_colour = render_colouring[
+          (render_colouring.index(render_colour) + 1)
+          % len(render_colouring)]
+      loki.set_render_colour(render_colour)
+      print('Render method {} {}'.format(render_colour, render_texture))
+    if todo == 'render_texture':
+      render_texture = render_texturing[
+          (render_texturing.index(render_texture) + 1)
+          % len(render_texturing)]
+      loki.set_render_texture(render_texture)
+      print('Render method {} {}'.format(render_colour, render_texture))
 
     loki.step()
     image = loki.render()
