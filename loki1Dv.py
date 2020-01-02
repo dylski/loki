@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-import buttons
 import wxdisplay
 import colorsys
 from enum import IntEnum
@@ -19,6 +18,9 @@ from scipy.stats import logistic
 import sys
 import argparse
 
+BUTTON_SHIM = True
+if BUTTON_SHIM:
+  import buttons
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
@@ -649,12 +651,14 @@ def main(config):
   plt.ion()
   show_resource = config['show_resource']
 
-  button_todo = ['render_colour', 'render_texture', 
+  button_todo = ['render_colour', 'render_texture',
       'extraction_method', 'show_resource',
       'stop', 'no_press']
 
   while True:
-    todo = button_todo[buttons.last_button_release()]
+    todo = ''
+    if BUTTON_SHIM:
+      todo = button_todo[buttons.last_button_release()]
     if config['gui'] == 'pygame':
       for event in pygame.event.get():
         if event.type == pygame.QUIT:
