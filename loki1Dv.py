@@ -1,28 +1,28 @@
 #!/usr/bin/python3
-import wxdisplay
+import argparse
 import colorsys
 from enum import IntEnum
 import functools
-# import getopt
-import math
 import io
+import math
 from matplotlib import pyplot as plt
 import numpy as np
 import operator
+import pygame
 import pickle
 from PIL import Image
-import pygame
 from pygame import surfarray
 import random
 from scipy.stats import logistic
 import sys
-import argparse
+import wxdisplay
 
 BUTTON_SHIM = True
 if BUTTON_SHIM:
   import buttons
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
+
 
 class Key(IntEnum):
   mean = 0  # key per resource
@@ -291,7 +291,6 @@ class Loki():
 
   def plot_data(self):
     plt.clf()
-    # import pdb; pdb.set_trace()
     plot_h = 4
     plot_w = 2
     plot_i = 1
@@ -366,7 +365,6 @@ class Loki():
 
   def _extract_energy(self):
     # env is list of resources
-    # import pdb; pdb.set_trace()
     dist_squared = np.square(self._agent_data['keys'][:,:,Key.mean]
         - self._resources)
     sigmas = self._agent_data['keys'][:,:,Key.sigma]
@@ -425,13 +423,11 @@ class Loki():
         ).astype(np.uint8)
 
   def _bitmap_to_image(self, display_size):
-    # return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
-    #         display_size, resample=Image.LANCZOS)
-    return Image.fromarray(self._bitmap.swapaxes(0,1)).resize(display_size)
+    return np.array(Image.fromarray(self._bitmap).resize((display_size[1],
+      display_size[0])))
 
   def _display_image(self, image, display):
-    bitmap = np.array(image).swapaxes(0,1).astype(np.uint8)
-    surfarray.blit_array(display, bitmap)
+    surfarray.blit_array(display, image)
     pygame.display.flip()
 
   def _replication(self, map_size):
@@ -465,8 +461,6 @@ class Loki():
 
   def _make_offspring(self, agent_index, target_index):
     self._agent_data['state'][agent_index, State.energy] /= 2
-    # self._agent_data['state'][target_index, State.energy] = (
-    #         self._agent_data['state'][agent_index, State.energy] / 2)
     self._agent_data['keys'][target_index, :] = self._agent_data[
             'keys'][agent_index, :]
     self._agent_data['state'][target_index, :] = self._agent_data[
