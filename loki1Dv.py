@@ -54,6 +54,7 @@ display_modes = ['pygame', 'console', 'headless', 'fullscreen',
 
 extraction_methods = ['max', 'mean']
 
+extraction_rates = [0.002, 0.01, 0.1, 0.5]
 
 def memoize(obj):
   cache = obj.cache = {}
@@ -74,7 +75,8 @@ def get_config(width=128,
       extraction_method='mean',
       resource_mutation=0.0001,
       show_resource=False,
-      display='windowed'):
+      display='windowed',
+      extraction_rate=0.1):
 
   gui = display
   if (display == 'windowed' or display == 'fullscreen'
@@ -91,6 +93,8 @@ def get_config(width=128,
       snooth_resources=True,
       resource_mutation_level=resource_mutation,
       extraction_method = extraction_method,
+      extraction_rate = extraction_rate,
+
 
       map_size=(width,) if height is None else (width, height),
       # map_size=(640,),
@@ -129,6 +133,11 @@ class Loki():
           self._display = wx.screen
       else:
         self._display = pygame.display.set_mode(config['display_size'])
+
+    # Mutation rates that probably ought to be zero.
+    self._mutation_of_mean_mutation_rate = 0.000
+    self._mutation_of_sigma_mutation_rate = 0.000
+    self._reproduction_mutation_rate = 0.000
 
     self._agent_data = self._init_agents(config)
 
@@ -194,17 +203,20 @@ class Loki():
     # #agents, #resources
     # import pdb; pdb.set_trace()
     keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
-    # keys[:,:,Key.sigma] = np.random.uniform(size=keys.shape[0:2]) * 4
-    keys[:,:,Key.sigma] = np.ones(keys.shape[0:2]) * 0.01
-    # Try same initial mutability
-    keys[:,:,Key.mean_mut] = 0.001
+    keys[:,:,Key.sigma] = np.ones(keys.shape[0:2]) * 0.1
+
+    # Same mutation rate for all
+    keys[:,:,Key.mean_mut] = 0.01
     keys[:,:,Key.sigma_mut] = 0.000
+    # Although could initialise each with unique mutation rates
     # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
     # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
+
     state = agent_data['state']
-    state[:,State.repo_threshold] = 5.  # np.random.uniform(size=state.shape[0]) * 5
+    state[:,State.repo_threshold] = 5.
+
     state[:,State.repo_threshold_mut] = np.random.uniform(
-            size=state.shape[0]) * 0.00
+            size=state.shape[0]) * self._reproduction_mutation_rate
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
         size=(state.shape[0],3))
     return agent_data
@@ -374,10 +386,10 @@ class Loki():
         )
     if self._config['extraction_method'] == 'max':
         self._extracted_energy = self._agent_data['keys'][:,:,Key.energy
-                ].max(axis=1)  * 0.1
+                ].max(axis=1) * self._config['extraction_rate']
     elif self._config['extraction_method'] == 'mean':
         self._extracted_energy = self._agent_data['keys'][:,:,Key.energy
-                ].mean(axis=1)  * 0.1
+                ].mean(axis=1) * self._config['extraction_rate']
     self._agent_data['state'][:,State.energy] += self._extracted_energy
     # print('Max energy', self._agent_data['state'][:,State.energy].max())
 
@@ -483,9 +495,11 @@ class Loki():
         dist='cauchy')
     # Turn off mutation of mutation rates
     mutate_array(self._agent_data['keys'][target_index, :, Key.mean_mut],
-        0.000, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
+        self._mutation_of_mean_mutation_rate,
+        lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     mutate_array(self._agent_data['keys'][target_index, :, Key.sigma_mut],
-        0.000, lower=0.0, higher=1.0, reflect=True, dist='cauchy')
+        self._mutation_of_sigma_mutation_rate,
+        lower=0.0, higher=1.0, reflect=True, dist='cauchy')
     self._agent_data['state'][
             target_index, State.repo_threshold] = mutate_value(
                     self._agent_data['state'][target_index,
@@ -646,8 +660,10 @@ def main(config):
   show_resource = config['show_resource']
 
   button_todo = ['render_colour', 'render_texture',
-      'extraction_method', 'show_resource',
-      'stop', 'no_press']
+      'extraction_rate',
+      'extraction_method',
+      'show_resource',
+      'no_press']
 
   while True:
     todo = ''
@@ -662,6 +678,8 @@ def main(config):
             todo = 'stop'
           if event.key == pygame.K_p:
             loki.plot_data()
+          if event.key == pygame.K_r:
+            todo = 'extraction_rate'
           if event.key == pygame.K_e:
             todo = 'extraction_method'
           if event.key == pygame.K_s:
@@ -676,6 +694,11 @@ def main(config):
     if todo == 'stop':
       break
 
+    if todo == 'extraction_rate':
+      loki.set_config('extraction_rate', extraction_rates[
+        (extraction_rates.index(
+          config['extraction_rate']) + 1) % len(extraction_rates)])
+      print('extraction_rate: {}'.format(config['extraction_rate']))
     if todo == 'extraction_method':
       loki.set_config('extraction_method', extraction_methods[
         (extraction_methods.index(
@@ -718,6 +741,9 @@ if __name__ == '__main__':
     render_texturing), default=render_texturing[0])
   ap.add_argument('-e', '--extraction', help='Extraction method [mean|max]',
     default='mean')
+  ap.add_argument('-r', '--extraction_rate',
+      help='Energy extraction rate ({})'.format(extraction_rates),
+      default=extraction_rates[2])
   ap.add_argument('-n', '--resource_mutation', help='Resrouce mutation level',
     default=0.0001)
   ap.add_argument('-d', '--display',
@@ -735,6 +761,7 @@ if __name__ == '__main__':
   render_texture = args.get('render_texture')
   extraction = args.get('extraction')
   resource_mutation = float(args.get('resource_mutation'))
+  extraction_rate = float(args.get('extraction_rate'))
   display = args.get('display')
   show_resource = args.get('show_res', False)
 
@@ -749,7 +776,8 @@ if __name__ == '__main__':
       show_resource=show_resource,
       extraction_method=extraction,
       resource_mutation=resource_mutation,
-      display=display)
+      display=display,
+      extraction_rate=extraction_rate)
 
   print(config)
   # ap = argparse.ArgumentParser()
