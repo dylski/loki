@@ -77,7 +77,8 @@ def get_config(width=128,
       resource_mutation=0.0001,
       show_resource=False,
       display='windowed',
-      extraction_rate=0.1):
+      extraction_rate=0.1,
+      save_frames=False):
 
   gui = display
   if (display == 'windowed' or display == 'fullscreen'
@@ -114,7 +115,7 @@ def get_config(width=128,
       render_texture=render_texture,
       show_resource=show_resource,
 
-      save_frames=False,
+      save_frames=save_frames,
       )
 
   config['num_agents'] = functools.reduce(operator.mul, config['map_size'])
@@ -260,7 +261,9 @@ class Loki():
       if self._config['gui'] == 'pygame':
         self._display_image(np.array(image), self._display)
       if self._config['save_frames']:
-        image.save('output_v/loki_frame_t{:09d}.png'.format(self._time))
+        Image.fromarray(self._bitmap.swapaxes(0,1)).resize(
+            self._config['display_size']).save(
+                'output_v/loki_frame_t{:09d}.png'.format(self._time))
       if self._config['gui'] == 'yield_frame':
         imgByteArr = io.BytesIO()
         image.save(imgByteArr, format='PNG')
@@ -747,6 +750,8 @@ if __name__ == '__main__':
   ap.add_argument('-d', '--display',
       help='Display mode [{}]'.format(display_modes), default=display_modes[0])
   ap.add_argument('-s', '--show_res', action='store_true', help='Show resource')
+  ap.add_argument('-f', '--save_frames', action='store_true',
+      help='Save frames to outout_v directory')
   args = vars(ap.parse_args())
   # ap.add_argument('-t', '--testing', help='test_mutateex',
   #     action='store_true')
@@ -762,6 +767,7 @@ if __name__ == '__main__':
   extraction_rate = float(args.get('extraction_rate'))
   display = args.get('display')
   show_resource = args.get('show_res', False)
+  save_frames = args.get('save_frames', False)
 
   testing = False
   # testing = args.get('testing')
@@ -775,7 +781,8 @@ if __name__ == '__main__':
       extraction_method=extraction,
       resource_mutation=resource_mutation,
       display=display,
-      extraction_rate=extraction_rate)
+      extraction_rate=extraction_rate,
+      save_frames=save_frames)
 
   print(config)
   # ap = argparse.ArgumentParser()
