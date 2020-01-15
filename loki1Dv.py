@@ -17,8 +17,10 @@ from scipy.stats import logistic
 import sys
 
 BUTTON_SHIM = True
-if BUTTON_SHIM:
+try:
   import buttons
+except ModuleNotFoundError:
+  BUTTON_SHIM = False
 
 sqrt_2_pi = np.sqrt(2 * np.pi)
 
@@ -256,9 +258,9 @@ class Loki():
       image = self._bitmap_to_image(self._config['display_size'])
 
       if self._config['gui'] == 'pygame':
-        self._display_image(image, self._display)
+        self._display_image(np.array(image), self._display)
       if self._config['save_frames']:
-        image.save('output_v/loki_frame_t{:09d}.png'.format(t))
+        image.save('output_v/loki_frame_t{:09d}.png'.format(self._time))
       if self._config['gui'] == 'yield_frame':
         imgByteArr = io.BytesIO()
         image.save(imgByteArr, format='PNG')
@@ -431,8 +433,8 @@ class Loki():
         ).astype(np.uint8)
 
   def _bitmap_to_image(self, display_size):
-    return np.array(Image.fromarray(self._bitmap).resize((display_size[1],
-      display_size[0])))
+    return Image.fromarray(self._bitmap).resize((display_size[1],
+      display_size[0]))
 
   def _display_image(self, image, display):
     surfarray.blit_array(display, image)
