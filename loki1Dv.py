@@ -15,7 +15,6 @@ from pygame import surfarray
 import random
 from scipy.stats import logistic
 import sys
-import wxdisplay
 
 BUTTON_SHIM = True
 if BUTTON_SHIM:
@@ -128,9 +127,6 @@ class Loki():
       if config['display'] == 'fullscreen':
         self._display = pygame.display.set_mode(
           config['display_size'],pygame.FULLSCREEN)
-      elif config['display'] == 'ssh_fullscreen':
-          wx = wxdisplay.wxdisplay()
-          self._display = wx.screen
       else:
         self._display = pygame.display.set_mode(config['display_size'])
 
