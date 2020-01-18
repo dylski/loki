@@ -1,4 +1,4 @@
-# Loki - One of the [A-Life On Pi](http://www.alifeonpi.com) projects
+# Loki - [A-Life On Pi](http://www.alifeonpi.com) project
 
 ![cover_gif](https://github.com/dylski/loki/blob/master/rgb_energydown.gif)
 A 128-cell evolving 1D world.
