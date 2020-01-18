@@ -55,7 +55,7 @@ display_modes = ['pygame', 'console', 'headless', 'fullscreen',
 
 extraction_methods = ['max', 'mean']
 
-extraction_rates = [0.002, 0.01, 0.1, 0.5]
+extraction_rates = [1./(2**x) for x in range(1, 9)]
 
 def memoize(obj):
   cache = obj.cache = {}
@@ -92,7 +92,7 @@ def get_config(width=128,
   config = dict(
       num_resources=num_resources,
 
-      snooth_resources=True,
+      smooth_resources=True,
       resource_mutation_level=resource_mutation,
       extraction_method = extraction_method,
       extraction_rate = extraction_rate,
@@ -152,31 +152,45 @@ class Loki():
       self._bitmap = np.zeros((config['map_size'] + (3,)),
         dtype=np.uint8)
 
+    # --- A few different ways of setting up the initial resources
+    # Randomised
     # self._resources = np.random.uniform(0, 1,
     #         size=(config['num_agents'], config['num_resources']))
+    # if 'smooth_resources' in config and config['smooth_resources']:
+    #   window_len = int(config['map_size'][0]/8)
+    #   left_off = math.ceil((window_len - 1) / 2)
+    #   right_off = math.ceil((window_len - 2) / 2)
+    #   w = np.ones(window_len,'d')
+    #   for i in range(config['num_resources']):
+    #       s = np.r_[self._resources[:,i][window_len-1:0:-1],
+    #                 self._resources[:,i],
+    #                 self._resources[:,i][-2:-window_len-1:-1]]
+    #       self._resources[:,i] = np.convolve(
+    #               w / w.sum(), s, mode='valid')[left_off : -right_off]
 
-    if 'smooth_resources' in config and config['smooth_resources']:
-      window_len = int(config['map_size'][0]/4)
-      left_off = math.ceil((window_len - 1) / 2)
-      right_off = math.ceil((window_len - 2) / 2)
-      w = np.ones(window_len,'d')
-      for i in range(config['num_resources']):
-          s = np.r_[self._resources[:,i][window_len-1:0:-1],
-                    self._resources[:,i],
-                    self._resources[:,i][-2:-window_len-1:-1]]
-          self._resources[:,i] = np.convolve(
-                  w / w.sum(), s, mode='valid')[left_off : -right_off]
-
-    # --- TESTING STUFF
+    # Gradient - gives good start.
     self._resources = np.ones((config['num_agents'], config['num_resources']))
     self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
     self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
     self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
 
+    # Uniform
+    # self._resources = np.ones((config['num_agents'], config['num_resources']))
+    # self._resources *= 0.5
+
+    # Add a bit of discontinuity
+    # self._resources[:int(self._resources.shape[0]/2),0] = np.linspace(0., 1.,
+    #     int(self._resources.shape[0]/2))
+    # self._resources[:int(self._resources.shape[0]/2),1] = np.linspace(0., 1.,
+    #     int(self._resources.shape[0]/2))
+    # self._resources[:int(self._resources.shape[0]/2),2] = np.linspace(0., 1.,
+    #     int(self._resources.shape[0]/2))
+
+    # 50:50 Black and white
+    # self._resources = np.ones((config['num_agents'], config['num_resources']))
     # half = int(self._resources.shape[0] / 2)
     # self._resources[0:half,:] = 0
     # self._resources[half:,:] = 1
-    # --- TESTING STUFF
 
     self._config = config
     self._data = {}  # For plotting, etc.
