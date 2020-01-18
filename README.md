@@ -65,7 +65,7 @@ At the moment your options are to either run
 
 and take a look at all command line arguments. For example, providing a height defines a 2D world.
 
-Alternatively take a look through the code, e.g. at *get_config* and *__init__** as that's where a lot of other stuff is defined that is not accessible through the command line args.
+Alternatively take a look through the code, e.g. at *get_config* and *__init__* as that's where a lot of other stuff is defined that is not accessible through the command line args.
 
 ## Start on boot
 Edit crontab:
