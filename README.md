@@ -1,7 +1,7 @@
-# Loki
+# Loki - One of the [A-Life On Pi](http://www.alifeonpi.com) projects
 
-![cover_gif](https://github.com/dylski/loki/blob/master/rgb_energydown.gif) 128 cell 1D world.
-
+![cover_gif](https://github.com/dylski/loki/blob/master/rgb_energydown.gif)
+128 cell 1D world.
 ## Description
 Loki is a 1D or 2D grid world holding cells that gain energy based on how well adapted they are to their local environment. When they have sufficient energy they spawn an offspring that occuppies a neighbouring cells. The offspring inherits colour and genetic keyse from its parent with mutation.
 
@@ -16,6 +16,7 @@ spawning a mutated child in a neighbouring grid location.
 
 ## Installing
 Runs nicely on a Raspberry Pi, using Python3 and PyGame.
+
 I think you just need to run install numpy and pygame, i.e. run the following:
     pip3 install numpy
     pip3 install pygame
@@ -54,6 +55,23 @@ Recommended operation for simple and cheap install:
 * Raspberry Pi with Button SHIM
 * Startup on boot in fullscreen
 * Press the Pi's buttons to change modes
+
+## More Details
+At the moment your options are to either run
+    $ python lock1Dv.py -h
+and take a look at all command line arguments. For example, providing a height defines a 2D world.
+
+Alternatively take a look through the code, e.g. at *get_config* and *__init__** as that's where a lot of other stuff is defined that is not accessible through the command line args.
+
+## Start on boot
+Edit crontab:
+    $ sudo crontab -e
+and append the line
+    @reboot sh <your_path_to>/launch_loki.sh > /tmp/loki.log 2>&1
+Edit launch_loki.sh to use your favourite command line args.
+
+## Web server
+    $ python loki_server.py
 
 
 
