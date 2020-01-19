@@ -4,16 +4,24 @@
 A 128-cell evolving 1D world.
 
 ## Description
-Loki is a 1D or 2D grid world holding cells that gain energy based on how well adapted they are to their local environment. When they have sufficient energy they spawn an offspring that occuppies a neighbouring cells. The offspring inherits colour and genetic keyse from its parent with mutation.
+Loki is a 1D (or 2D) grid world holding *cells* that gain
+energy based on how well adapted they are to their local
+environment. When they have sufficient energy they spawn
+an offspring that occupies a neighbouring cell. The
+offspring inherits, with mutation, their parent's colour
+and genetic *keys*. Their *keys* are used
+to unlock energy from the envorinment.
 
-A cell's compatibilty with the environment is though a simple Lock-and-Key
-mechanism. Cells have three *keys* (simplyfloats) and each grid location has
-three *locks* (also floats). The degree to which the cell's three keys match
-their environment's three locks determines how much energy they extract at each
-time step. The environmental lock values can slow evolve over time.
+Cells unlock energy through a simple *Lock and Key* mechanism. Each cell has
+three unique *keys* (simply three floats) and each grid
+location has three *locks* (also three floats).
+The compaibility between a cell's keys and their
+environment's locks determines the amount of energy they
+extract at each time step. The environment's locks can slow evolve over time.
 
-Once a cell's energy reaches the repoduction threshold they split into two -
-spawning a mutated child in a neighbouring grid location.
+A cell spwans a mutated child into a neighbouring location once its energy
+reaches a repoduction threshold. The parent's energy is shared equally between
+ the two. Colour mutation is minimal so related cells can be identified by similarity of colour.
 
 ## Installing
 Runs nicely on a Raspberry Pi, using Python3 and PyGame.
