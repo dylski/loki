@@ -296,6 +296,8 @@ class Loki():
             self._config['display_size']).save(
                 'output_v/loki_frame_t{:09d}.png'.format(self._time))
       if self._config['gui'] == 'yield_frame':
+        # import pdb; pdb.set_trace()
+        image = image.rotate(-90)
         imgByteArr = io.BytesIO()
         image.save(imgByteArr, format='PNG')
         return imgByteArr.getvalue()
