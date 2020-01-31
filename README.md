@@ -4,7 +4,7 @@
 A 128-cell evolving 1D world.
 
 ## Description
-Loki is a 1D (or 2D) grid world holding *cells* that gain
+Loki is a 1D (or 2D) grid world holding *agents* that gain
 energy based on how well adapted they are to their local
 environment. When they have sufficient energy they spawn
 an offspring that occupies a neighbouring cell. The
@@ -12,16 +12,18 @@ offspring inherits, with mutation, their parent's colour
 and genetic *keys*. Their *keys* are used
 to unlock energy from the envorinment.
 
-Cells unlock energy through a simple *Lock and Key* mechanism. Each cell has
-three unique *keys* (simply three floats) and each grid
-location has three *locks* (also three floats).
-The compaibility between a cell's keys and their
-environment's locks determines the amount of energy they
-extract at each time step. The environment's locks can slow evolve over time.
+Agents unlock energy through a simple *Lock and Key* mechanism. Each agent has
+three unique *key* values and each grid
+location has three *lock* values.
+The compaibility between an agent's keys and their location's locks determines
+the energy they extract at each time step.
+The environment's locks can slow evolve over time.
 
-A cell spwans a mutated child into a neighbouring location once its energy
+An agent spwans a mutated child into a neighbouring location once its energy
 reaches a repoduction threshold. The parent's energy is shared equally between
- the two. Colour mutation is minimal so related cells can be identified by similarity of colour.
+the two. Colour mutation is minimal so related cells can be identified by similarity of colour.
+
+Go to [Loki](http://www.alifeonpi.com/loki.html) for more details.
 
 ## Installing
 Runs nicely on a Raspberry Pi, using Python3 and PyGame.
@@ -37,9 +39,9 @@ I think you just need to run install numpy and pygame, i.e. run the following:
 Once running, keyboard controls are
 * C - cycle **C**olour mode
 * T - cycle **T**exture mode
-* R - cycle **R**esource extraction **R**ate
+* R - cycle Energy extraction **R**ate
 * E - toggle energy **E**traction mode mean/max
-* S - toggle **S**how resource keys on/off
+* S - toggle **S**how lock landscape on/off
 Button SHIM buttons are the same.
 
 ## Operation
@@ -58,13 +60,6 @@ Some settings can be changed on the fly through a keyboard or the **Button SHIM*
 * Energy extraction rate: Cycles from slow to fast
 * Energy extration method: Based on best key performance or mean of all keys
 * Render on top line the environment lock values as RGB
-
-Recommended operation for simple and cheap install:
-* Cheap low-res projector (e.g. 640x480)
-* Secondhand picture frame containing white poster against black background
-* Raspberry Pi with Button SHIM
-* Startup on boot in fullscreen
-* Press the Pi's buttons to change modes
 
 ## More Details
 At the moment your options are to either run
@@ -87,5 +82,6 @@ and append the line
 Edit launch_loki.sh to use your favourite command line args.
 
 ## Web server
+    $ pip3 install flask
     $ python loki_server.py
 

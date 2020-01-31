@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import argparse
-import colorsys
+from data_logger import DataLogger
 from enum import IntEnum
 import functools
 import io
@@ -25,13 +25,10 @@ import math
 from matplotlib import pyplot as plt
 import numpy as np
 import operator
-import pygame
-import pickle
 from PIL import Image
+import pygame
 from pygame import surfarray
 import random
-from scipy.stats import logistic
-import sys
 
 BUTTON_SHIM = True
 try:
@@ -43,7 +40,7 @@ sqrt_2_pi = np.sqrt(2 * np.pi)
 
 
 class Key(IntEnum):
-  mean = 0  # key per resource
+  mean = 0  # key per lock
   sigma = 1
   mean_mut = 2
   sigma_mut = 3
@@ -64,14 +61,13 @@ class State(IntEnum):
   colour_mut = 7
   _num = 8
 
+
 render_colouring = ['rgb', 'irgb', 'keys','none']
 render_texturing = ['flat', 'energy_up', 'energy_down']
-
 display_modes = ['pygame', 'console', 'headless', 'fullscreen',
-        'ssh_fullscreen', 'windowed', 'yield_frame']
-
+    'ssh_fullscreen', 'windowed', 'yield_frame']
 extraction_methods = ['max', 'mean']
-
+landscape = ['level', 'gradient', 'wobbly', 'rough', 'variable', 'black-white']
 extraction_rates = [1./(2**x) for x in range(1, 9)]
 
 def memoize(obj):
@@ -91,11 +87,13 @@ def get_config(width=128,
       render_colour='rgb',
       render_texture='flat',
       extraction_method='mean',
-      resource_mutation=0.0001,
-      show_resource=False,
+      lock_mutation=0.0001,
+      show_lock=False,
       display='windowed',
       extraction_rate=0.1,
-      save_frames=False):
+      save_frames=False,
+      log_data=None,
+      landscape='gradient'):
 
   gui = display
   if (display == 'windowed' or display == 'fullscreen'
@@ -104,16 +102,16 @@ def get_config(width=128,
   elif display == 'headless':
     gui = 'yield_frame'
 
-  num_resources = 3
+  num_locks = 3
 
   config = dict(
-      num_resources=num_resources,
+      num_locks=num_locks,
 
-      smooth_resources=True,
-      resource_mutation_level=resource_mutation,
+      smooth_locks=False,
+      lock_mutation_level=lock_mutation,
       extraction_method = extraction_method,
       extraction_rate = extraction_rate,
-
+      landscape=landscape,
 
       map_size=(width,) if height is None else (width, height),
       # map_size=(640,),
@@ -130,9 +128,10 @@ def get_config(width=128,
       display=display,
       render_colour=render_colour,
       render_texture=render_texture,
-      show_resource=show_resource,
+      show_lock=show_lock,
 
       save_frames=save_frames,
+      log_data=log_data,
       )
 
   config['num_agents'] = functools.reduce(operator.mul, config['map_size'])
@@ -142,6 +141,7 @@ def get_config(width=128,
 
 class Loki():
   def __init__(self, config):
+    self._config = config
     self._time = 0
     if config['gui'] == 'pygame':
       if config['display'] == 'fullscreen':
@@ -155,7 +155,8 @@ class Loki():
     self._mutation_of_sigma_mutation_rate = 0.000
     self._reproduction_mutation_rate = 0.000
 
-    self._agent_data = self._init_agents(config)
+    self._init_agents()
+    self._init_landscape_locks()
 
     # render_data stores RGB, Energy and first 3 Keys for rendering.
     if config['world_d'] == 1:
@@ -169,95 +170,102 @@ class Loki():
       self._bitmap = np.zeros((config['map_size'] + (3,)),
         dtype=np.uint8)
 
-    # --- A few different ways of setting up the initial resources
-    # Randomised
-    # self._resources = np.random.uniform(0, 1,
-    #         size=(config['num_agents'], config['num_resources']))
-    # if 'smooth_resources' in config and config['smooth_resources']:
-    #   window_len = int(config['map_size'][0]/8)
-    #   left_off = math.ceil((window_len - 1) / 2)
-    #   right_off = math.ceil((window_len - 2) / 2)
-    #   w = np.ones(window_len,'d')
-    #   for i in range(config['num_resources']):
-    #       s = np.r_[self._resources[:,i][window_len-1:0:-1],
-    #                 self._resources[:,i],
-    #                 self._resources[:,i][-2:-window_len-1:-1]]
-    #       self._resources[:,i] = np.convolve(
-    #               w / w.sum(), s, mode='valid')[left_off : -right_off]
-
-    # Gradient - gives good start.
-    self._resources = np.ones((config['num_agents'], config['num_resources']))
-    self._resources[:,0] = np.linspace(0., 1., self._resources.shape[0])
-    self._resources[:,1] = np.linspace(0., 1., self._resources.shape[0])
-    self._resources[:,2] = np.linspace(0., 1., self._resources.shape[0])
-
-    # Uniform
-    # self._resources = np.ones((config['num_agents'], config['num_resources']))
-    # self._resources *= 0.5
-
-    # Add a bit of discontinuity
-    # self._resources[:int(self._resources.shape[0]/2),0] = np.linspace(0., 1.,
-    #     int(self._resources.shape[0]/2))
-    # self._resources[:int(self._resources.shape[0]/2),1] = np.linspace(0., 1.,
-    #     int(self._resources.shape[0]/2))
-    # self._resources[:int(self._resources.shape[0]/2),2] = np.linspace(0., 1.,
-    #     int(self._resources.shape[0]/2))
-
-    # 50:50 Black and white
-    # self._resources = np.ones((config['num_agents'], config['num_resources']))
-    # half = int(self._resources.shape[0] / 2)
-    # self._resources[0:half,:] = 0
-    # self._resources[half:,:] = 1
-
-    self._config = config
     self._data = {}  # For plotting, etc.
     self._data_history_len = self._render_data.shape[1];
     self._repo_energy_stats = []
-    # mean min, max; sigma min, max
-    self._resources_metrics = np.zeros((4, config['num_resources']))
-    self._resources_metrics[0] = np.inf
-    self._resources_metrics[1] = -np.inf
-    self._resources_metrics[2] = np.inf
-    self._resources_metrics[3] = -np.inf
-    # print('Resources: ', self._resources)
+    # Track mean min, max; sigma min, max
+    self._locks_metrics = np.zeros((4, config['num_locks']))
+    self._locks_metrics[0] = np.inf
+    self._locks_metrics[1] = -np.inf
+    self._locks_metrics[2] = np.inf
+    self._locks_metrics[3] = -np.inf
 
-  def _init_agents(self, config):
+    self._data_logger = None
+    if config['log_data'] is not None:
+      self._data_logger = DataLogger(['sigma'], config['log_data'], 1000)
+
+  def _init_agents(self):
     """Creates dict with all agents' key and state data."""
 
-    agent_data = dict(
-      keys = np.zeros((config['num_agents'], config['num_resources'],
-        int(Key._num))),
-      state = np.zeros((config['num_agents'], int(State._num)))
+    self._agent_data = dict(
+      keys = np.zeros((self._config['num_agents'],
+        self._config['num_locks'], int(Key._num))),
+      state = np.zeros((self._config['num_agents'], int(State._num)))
       )
-    keys = agent_data['keys']
-    # #agents, #resources
-    # import pdb; pdb.set_trace()
+    keys = self._agent_data['keys']
     keys[:,:,Key.mean] = np.random.uniform(size=keys.shape[0:2])
     keys[:,:,Key.sigma] = np.ones(keys.shape[0:2]) * 0.1
 
-    # Same mutation rate for all
+    # Same mutation rate for all (although could try random intial mutation
+    # rates, e.g. np.random.uniform(size=keys.shape[0:2]) * 0.02
     keys[:,:,Key.mean_mut] = 0.01
-    keys[:,:,Key.sigma_mut] = 0.000
-    # Although could initialise each with unique mutation rates
-    # keys[:,:,Key.mean_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
-    # keys[:,:,Key.sigma_mut] = np.random.uniform(size=keys.shape[0:2]) * 0.02
+    keys[:,:,Key.sigma_mut] = 0.0001
 
-    state = agent_data['state']
+    state = self._agent_data['state']
     state[:,State.repo_threshold] = 5.
 
     state[:,State.repo_threshold_mut] = np.random.uniform(
             size=state.shape[0]) * self._reproduction_mutation_rate
     state[:,State._colour_start:State._colour_end] = np.random.uniform(
         size=(state.shape[0],3))
-    return agent_data
+
+  def _init_landscape_locks(self):
+    # --- A few different ways of setting up the initial locks
+    # Randomised
+    if (self._config['landscape'] == 'wobbly'
+        or self._config['landscape'] == 'rough'):
+      self._locks = np.random.uniform(0, 1,
+          size=(self._config['num_agents'], self._config['num_locks']))
+      if self._config['landscape'] == 'wobbly':
+        window_len = int(self._config['map_size'][0]/8)
+        left_off = math.ceil((window_len - 1) / 2)
+        right_off = math.ceil((window_len - 2) / 2)
+        w = np.ones(window_len,'d')
+        for i in range(self._config['num_locks']):
+            s = np.r_[self._locks[:,i][window_len-1:0:-1],
+                      self._locks[:,i],
+                      self._locks[:,i][-2:-window_len-1:-1]]
+            self._locks[:,i] = np.convolve(
+                    w / w.sum(), s, mode='valid')[left_off : -right_off]
+
+    elif self._config['landscape'] == 'gradient':
+      self._locks = np.ones(
+          (self._config['num_agents'], self._config['num_locks']))
+      self._locks[:,0] = np.linspace(0., 1., self._locks.shape[0])
+      self._locks[:,1] = np.linspace(0., 1., self._locks.shape[0])
+      self._locks[:,2] = np.linspace(0., 1., self._locks.shape[0])
+
+    elif (self._config['landscape'] == 'level'
+        or self._config['landscape'] == 'variable'):
+      self._locks = np.ones(
+          (self._config['num_agents'], self._config['num_locks']))
+      self._locks *= 0.5
+
+      if self._config['landscape'] == 'variable':
+        self._locks[:int(self._locks.shape[0]/2),0] = np.linspace(0., 1.,
+            int(self._locks.shape[0]/2))
+        self._locks[:int(self._locks.shape[0]/2),1] = np.linspace(0., 1.,
+            int(self._locks.shape[0]/2))
+        self._locks[:int(self._locks.shape[0]/2),2] = np.linspace(0., 1.,
+            int(self._locks.shape[0]/2))
+
+    elif self._config['landscape'] == 'black-white':
+      self._locks = np.ones(
+          (self._config['num_agents'], self._config['num_locks']))
+      half = int(self._locks.shape[0] / 2)
+      self._locks[0:half,:] = 0
+      self._locks[half:,:] = 1
+    else:
+      raise ValueError('Unkown landscape config {}'.format(
+        self._config['landscape']))
 
   def set_config(self, key, value):
     if key not in self._config:
       raise ValueError('{} not in config'.format(key))
     self._config[key] = value
 
-  def set_render_resource(self, render_resource):
-    self._config['show_resource'] = render_resource
+  def set_render_lock(self, render_lock):
+    self._config['show_lock'] = render_lock
 
   def set_render_colour(self, render_colour):
     self._config['render_colour'] = render_colour
@@ -269,7 +277,7 @@ class Loki():
     self._render_data = np.roll(self._render_data, 1, axis=1)
 
     row_offset  = 0
-    if self._config['world_d'] == 1:  #  and show_resource:
+    if self._config['world_d'] == 1:  #  and show_lock:
         row_offset = math.ceil(self._config['num_1d_history'] * 0.02)
 
     self._agents_to_render_data(row=row_offset)
@@ -278,9 +286,9 @@ class Loki():
         render_texture=self._config['render_texture'])
 
     if self._config['world_d'] == 1:
-      if self._config['show_resource']:
+      if self._config['show_lock']:
         self._bitmap[:,0:row_offset,:] = np.expand_dims(
-                (self._resources[:,0:3] * 255).astype(np.uint8), axis=1)
+                (self._locks[:,0:3] * 255).astype(np.uint8), axis=1)
       else:
         self._bitmap[:,0:row_offset,:] = 0
 
@@ -307,10 +315,12 @@ class Loki():
     return self.render()
 
   def step(self):
-    self._change_resources()
+    self._change_locks()
     self._extract_energy()
     self._replication(self._config['map_size'])
     self._gather_data()
+    if self._data_logger:
+      self._data_logger.add_data([self._data['sigma_history'][-1].mean()])
     self._time += 1
 
   def _gather_data(self):
@@ -348,7 +358,7 @@ class Loki():
     ax.plot(np.array(self._data['sigma_history'])[:])
     ax.set_title('Sigma history')
 
-    if self._config['num_resources'] == 1:
+    if self._config['num_locks'] == 1:
       plt.tight_layout()
       plt.draw()
       plt.pause(0.0001)
@@ -356,8 +366,8 @@ class Loki():
 
     plot_i += 1
     ax = plt.subplot(plot_h,plot_w,plot_i)
-    ax.plot(self._resources)
-    ax.set_title('Resource values')
+    ax.plot(self._locks)
+    ax.set_title('Lock values')
 
     plot_i += 1
     ax = plt.subplot(plot_h, plot_w, plot_i)
@@ -376,43 +386,43 @@ class Loki():
 
     plot_i += 1
     ax = plt.subplot(plot_h,plot_w,plot_i)
-    # Get min and max for resource means.
+    # Get min and max for lock means.
     m0_min = self._agent_data['keys'][:, :, Key.mean].min(axis=0)
     m0_max = self._agent_data['keys'][:, :, Key.mean].max(axis=0)
-    smaller = m0_min < self._resources_metrics[0]
-    self._resources_metrics[0][smaller] = m0_min[smaller]
-    larger = m0_max > self._resources_metrics[1]
-    self._resources_metrics[1][larger] = m0_max[larger]
+    smaller = m0_min < self._locks_metrics[0]
+    self._locks_metrics[0][smaller] = m0_min[smaller]
+    larger = m0_max > self._locks_metrics[1]
+    self._locks_metrics[1][larger] = m0_max[larger]
     ax.scatter(self._agent_data['keys'][:, :, Key.mean][:, 0],
         self._agent_data['keys'][:, :, Key.mean][:, 1])
-    ax.set_xlim(self._resources_metrics[0][0], self._resources_metrics[1][0])
-    ax.set_ylim(self._resources_metrics[0][1], self._resources_metrics[1][1])
+    ax.set_xlim(self._locks_metrics[0][0], self._locks_metrics[1][0])
+    ax.set_ylim(self._locks_metrics[0][1], self._locks_metrics[1][1])
     ax.set_title('Mean')
 
     plot_i += 1
     ax = plt.subplot(plot_h,plot_w,plot_i)
-    # Get min and max for resource sigmas.
+    # Get min and max for lock sigmas.
     m0_min = self._agent_data['keys'][:, :, Key.sigma].min(axis=0)
     m0_max = self._agent_data['keys'][:, :, Key.sigma].max(axis=0)
-    smaller = m0_min < self._resources_metrics[2]
-    self._resources_metrics[2][smaller] = m0_min[smaller]
-    larger = m0_max > self._resources_metrics[3]
-    self._resources_metrics[3][larger] = m0_max[larger]
+    smaller = m0_min < self._locks_metrics[2]
+    self._locks_metrics[2][smaller] = m0_min[smaller]
+    larger = m0_max > self._locks_metrics[3]
+    self._locks_metrics[3][larger] = m0_max[larger]
     ax.scatter(self._agent_data['keys'][:, :, Key.sigma][:, 0],
         self._agent_data['keys'][:, :, Key.sigma][:, 1])
-    ax.set_xlim(self._resources_metrics[2][0], self._resources_metrics[3][0])
-    ax.set_ylim(self._resources_metrics[2][1], self._resources_metrics[3][1])
+    ax.set_xlim(self._locks_metrics[2][0], self._locks_metrics[3][0])
+    ax.set_ylim(self._locks_metrics[2][1], self._locks_metrics[3][1])
     ax.set_title('Sigma')
 
     plt.tight_layout()
     plt.draw()
     plt.pause(0.0001)
-    self._resources_metrics *= 0.9
+    self._locks_metrics *= 0.9
 
   def _extract_energy(self):
-    # env is list of resources
+    # env is list of locks
     dist_squared = np.square(self._agent_data['keys'][:,:,Key.mean]
-        - self._resources)
+        - self._locks)
     sigmas = self._agent_data['keys'][:,:,Key.sigma]
     self._agent_data['keys'][:,:,Key.energy] = (
         np.exp(-dist_squared / (2 * sigmas * sigmas))
@@ -514,7 +524,7 @@ class Loki():
     self._mutate_agent(target_index)
 
   def _mutate_agent(self, target_index):
-    # Now resources are expected to be 0 <= x <= 1
+    # Now locks are expected to be 0 <= x <= 1
     lower = 0.0
     higher = 1.0
 
@@ -545,10 +555,10 @@ class Loki():
       target_index, State._colour_start:State._colour_end], 0.01,
       lower=0.0, higher=1.0, reflect=True)
 
-  def _change_resources(self, force=False):
+  def _change_locks(self, force=False):
     changed = False
-    resource_mutability = np.ones(self._resources.shape[1]) * self._config[
-            'resource_mutation_level']
+    lock_mutability = np.ones(self._locks.shape[1]) * self._config[
+            'lock_mutation_level']
 
     intensity = 0.1
     roughness = 4
@@ -560,27 +570,27 @@ class Loki():
     right_off = math.ceil((window_len - 2) / 2)
     w = np.ones(window_len,'d')
 
-    for i in range(self._resources.shape[1]):
-      if np.random.uniform() < resource_mutability[i] or force:
-        # self._resources[0] = np.random.uniform(-1,1) * 5
-        # self._resources[:,i] += np.random.uniform(-0.1, 0.1,
-        #         size=(self._resources.shape[0],))
+    for i in range(self._locks.shape[1]):
+      if np.random.uniform() < lock_mutability[i] or force:
+        # self._locks[0] = np.random.uniform(-1,1) * 5
+        # self._locks[:,i] += np.random.uniform(-0.1, 0.1,
+        #         size=(self._locks.shape[0],))
 
-        # Slowly evolving resource with -n < 0.1
+        # Slowly evolving lock with -n < 0.1
         change = np.random.normal(
-                size=(self._resources.shape[0],)) * intensity
+                size=(self._locks.shape[0],)) * intensity
         s = np.r_[change[window_len-1:0:-1],
                   change, change[-2:-window_len-1:-1]]
         change = np.convolve(
                 w / w.sum(), s, mode='valid')[left_off : -right_off]
-        self._resources[:,i] += change
-        # self._resources[0] += np.random.standard_cauchy() * 5
+        self._locks[:,i] += change
+        # self._locks[0] += np.random.standard_cauchy() * 5
 
-        self._resources[:,i] = np.clip(self._resources[:,i], 0., 1.)
+        self._locks[:,i] = np.clip(self._locks[:,i], 0., 1.)
         changed = True
     # if changed:
-    #   print('Resources at {} = {} (mutability {})'.format(
-    #     self._time, self._resources, resource_mutability))
+    #   print('Lock at {} = {} (mutability {})'.format(
+    #     self._time, self._locks, lock_mutability))
 
 
 
@@ -691,12 +701,12 @@ def main(config):
 
   pygame.init()
   plt.ion()
-  show_resource = config['show_resource']
+  show_lock = config['show_lock']
 
   button_todo = ['render_colour', 'render_texture',
       'extraction_rate',
       'extraction_method',
-      'show_resource',
+      'show_lock',
       'no_press']
 
   while True:
@@ -717,9 +727,9 @@ def main(config):
           if event.key == pygame.K_e:
             todo = 'extraction_method'
           if event.key == pygame.K_s:
-            todo = 'show_resource'
+            todo = 'show_lock'
           if event.key == pygame.K_x:
-            todo = 'change_resources'
+            todo = 'change_locks'
           if event.key == pygame.K_c:
             todo = 'render_colour'
           if event.key == pygame.K_t:
@@ -738,12 +748,12 @@ def main(config):
         (extraction_methods.index(
           config['extraction_method']) + 1) % len(extraction_methods)])
       print('Extraction method: {}'.format(config['extraction_method']))
-    if todo == 'show_resource':
-      show_resource = not show_resource
-      loki.set_render_resource(show_resource)
-      print('Show keys: {}'.format(show_resource))
-    if todo == 'change_resources':
-      loki._change_resources(force=True)
+    if todo == 'show_lock':
+      show_lock = not show_lock
+      loki.set_render_lock(show_lock)
+      print('Show keys: {}'.format(show_lock))
+    if todo == 'change_locks':
+      loki._change_locks(force=True)
     if todo == 'render_colour':
       render_colour = render_colouring[
           (render_colouring.index(render_colour) + 1)
@@ -781,18 +791,22 @@ This is free software, and you are welcome to redistribute it under certain cond
     render_colouring), default=render_colouring[0])
   ap.add_argument('-t', '--render_texture', help='Render texture [{}]'.format(
     render_texturing), default=render_texturing[0])
+  ap.add_argument('-p', '--landscape', help='Landscape peakiness [{}]'.format(
+    landscape), default=landscape[1])
   ap.add_argument('-e', '--extraction', help='Extraction method [mean|max]',
     default='mean')
   ap.add_argument('-r', '--extraction_rate',
       help='Energy extraction rate ({})'.format(extraction_rates),
       default=extraction_rates[2])
-  ap.add_argument('-n', '--resource_mutation', help='Resrouce mutation level',
+  ap.add_argument('-n', '--lock_mutation', help='Lock mutation level',
     default=0.0001)
   ap.add_argument('-d', '--display',
       help='Display mode [{}]'.format(display_modes), default=display_modes[0])
-  ap.add_argument('-s', '--show_res', action='store_true', help='Show resource')
+  ap.add_argument('-s', '--show_locks', action='store_true',
+      help='Show lock landscape')
   ap.add_argument('-f', '--save_frames', action='store_true',
       help='Save frames to outout_v directory')
+  ap.add_argument('-l', '--log_data', help='Log data to file', default=None)
   args = vars(ap.parse_args())
   # ap.add_argument('-t', '--testing', help='test_mutateex',
   #     action='store_true')
@@ -803,12 +817,14 @@ This is free software, and you are welcome to redistribute it under certain cond
   gen_history = int(args.get('gen_history'))
   render_colour = args.get('render_colour')
   render_texture = args.get('render_texture')
+  landscape = args.get('landscape')
   extraction = args.get('extraction')
-  resource_mutation = float(args.get('resource_mutation'))
+  lock_mutation = float(args.get('lock_mutation'))
   extraction_rate = float(args.get('extraction_rate'))
   display = args.get('display')
-  show_resource = args.get('show_res', False)
+  show_lock = args.get('show_res', False)
   save_frames = args.get('save_frames', False)
+  log_data = args.get('log_data')
 
   testing = False
   # testing = args.get('testing')
@@ -818,12 +834,14 @@ This is free software, and you are welcome to redistribute it under certain cond
       num_1d_history=gen_history,
       render_colour=render_colour,
       render_texture=render_texture,
-      show_resource=show_resource,
+      show_lock=show_lock,
       extraction_method=extraction,
-      resource_mutation=resource_mutation,
+      lock_mutation=lock_mutation,
       display=display,
       extraction_rate=extraction_rate,
-      save_frames=save_frames)
+      save_frames=save_frames,
+      log_data=log_data,
+      landscape=landscape)
 
   print(config)
   # ap = argparse.ArgumentParser()
