@@ -34,7 +34,7 @@ I think you just need to run install numpy and pygame, i.e. run the following:
     pip3 install pygame
 
 ## Quick Start
-    $ python loki1Dv.py
+    $ python main.py
 
 Once running, keyboard controls are
 * C - cycle **C**olour mode
@@ -64,7 +64,7 @@ Some settings can be changed on the fly through a keyboard or the **Button SHIM*
 ## More Details
 At the moment your options are to either run
 
-    $ python lock1Dv.py -h
+    $ python main.py -h
 
 and take a look at all command line arguments. For example, providing a height defines a 2D world.
 
