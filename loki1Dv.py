@@ -120,9 +120,11 @@ def get_config(width=128,
       num_1d_history=num_1d_history,
       # num_1d_history = 720,
 
-      display_size=(656, 416),
+      # display_size=(2000, 1000),
+      # display_size=(656, 416),
       # display_size=(640, 480),
       # display_size=(1280,720),
+      display_size=(640,360),
 
       gui=gui,
       display=display,
@@ -277,7 +279,7 @@ class Loki():
     self._render_data = np.roll(self._render_data, 1, axis=1)
 
     row_offset  = 0
-    if self._config['world_d'] == 1:  #  and show_lock:
+    if self._config['world_d'] == 1 and self._config['show_lock']:
         row_offset = math.ceil(self._config['num_1d_history'] * 0.02)
 
     self._agents_to_render_data(row=row_offset)
